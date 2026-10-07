@@ -1,0 +1,3 @@
+const test=require('node:test'),assert=require('node:assert/strict');const {clampPoint,panelPosition}=require('./shell-utils.cjs');
+test('mascot stays on screen including negative-coordinate displays',()=>{assert.deepEqual(clampPoint(-999,999,{x:0,y:0,width:800,height:600},86,96),{x:0,y:504});assert.deepEqual(clampPoint(-1700,50,{x:-1600,y:0,width:1600,height:900},86,96),{x:-1600,y:50});});
+test('panel chooses visible side and clamps within work area',()=>{assert.deepEqual(panelPosition({x:900,y:800,width:86,height:96},{x:0,y:0,width:1200,height:1000},440,750),{x:448,y:146});assert.deepEqual(panelPosition({x:0,y:0,width:86,height:96},{x:0,y:0,width:1200,height:1000},440,750),{x:98,y:0});});

@@ -1,0 +1,19 @@
+const {contextBridge,ipcRenderer}=require('electron');
+contextBridge.exposeInMainWorld('nudge',{
+ toggle:()=>ipcRenderer.send('toggle-panel'),hide:()=>ipcRenderer.send('hide-panel'),
+ menu:()=>ipcRenderer.send('mascot-menu'),drag:(x,y)=>ipcRenderer.send('drag-mascot',{x,y}),
+ badge:n=>ipcRenderer.send('badge',n),onBadge:fn=>ipcRenderer.on('badge-update',(_e,n)=>fn(n)),
+ onSettings:fn=>ipcRenderer.on('show-settings',()=>fn()),
+ onVisibility:fn=>ipcRenderer.on('panel-visibility',(_e,visible)=>fn(visible)),
+ api:(route,data)=>ipcRenderer.invoke('bridge-api',route,data),
+ getConnection:()=>ipcRenderer.invoke('connection-get'),
+ previewSound:sound=>ipcRenderer.invoke('sound-preview',sound),
+ onNotification:fn=>ipcRenderer.on('notification-arrived',(_e,event)=>fn(event)),
+ onSoundPreview:fn=>ipcRenderer.on('sound-preview',(_e,event)=>fn(event)),
+ setNotifications:input=>ipcRenderer.invoke('notifications-set',input),
+ copyToken:value=>ipcRenderer.invoke('token-copy',value),
+ pasteToken:()=>ipcRenderer.invoke('token-paste'),
+ saveConnection:input=>ipcRenderer.invoke('connection-save',input),
+ testConnection:input=>ipcRenderer.invoke('connection-test',input),
+ forgetConnection:()=>ipcRenderer.invoke('connection-forget'),
+});

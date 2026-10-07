@@ -1,0 +1,12 @@
+node_modules/
+dist/
+evidence/
+__pycache__/
+*.pyc
+.env*
+*.sqlite*
+*.db
+*.pem
+connection.json
+token
+.DS_Store
