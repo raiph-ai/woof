@@ -2,7 +2,7 @@
 
 **Woof — your AI lookout.** A small white-and-grey desktop direwolf that keeps you aware of Hermes replies, task results, and useful next steps.
 
-Current build: **0.3.6**, macOS Apple silicon. This repository is private. GitHub Pages is not enabled; the documentation is available only to people who can access this repository.
+Current build: **0.3.7**, macOS Apple silicon. This repository is private. GitHub Pages is not enabled; the documentation is available only to people who can access this repository.
 
 ## Start here
 - [Install and connect](setup.md): desktop installation, bridge deployment, pairing, and secure transport.
@@ -16,7 +16,7 @@ Current build: **0.3.6**, macOS Apple silicon. This repository is private. GitHu
 
 ## Private downloads
 
-The [v0.3.6 release](https://github.com/raiph-ai/woof/releases/tag/v0.3.6) holds the Apple-silicon DMG, ZIP-wrapped installer, source archive, and checksums. Repository access is required. The build is ad-hoc signed, not Apple-notarized.
+The [v0.3.7 release](https://github.com/raiph-ai/woof/releases/tag/v0.3.7) holds the Apple-silicon DMG, ZIP-wrapped installer, source archive, and checksums. Repository access is required. The build is ad-hoc signed, not Apple-notarized.
 
 ## What Woof is not
 

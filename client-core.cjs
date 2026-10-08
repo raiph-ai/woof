@@ -22,8 +22,7 @@ async function fetchBridge(connection,route,data,options={}){
  if(body&&Buffer.byteLength(body)>65536)throw Error('Request is too large.');
  const endpoint=new URL('api/'+route,connection.serverUrl);
  let response;
- try{response=await fetch(endpoint,{method,headers:{Authorization:'Bearer '+connection.token,...(body?{'Content-Type':'application/json'}:{})},body,redirect:'error',signal:AbortSignal.timeout(options.timeout||70000)});}
- catch{throw Error('Cannot reach the Hermes bridge. Check the URL, network/tunnel, and HTTPS certificate. Redirects are not followed.');}
+ for(let attempt=0;attempt<(method==='GET'?2:1);attempt++){try{response=await fetch(endpoint,{method,headers:{Authorization:'Bearer '+connection.token,...(body?{'Content-Type':'application/json'}:{})},body,redirect:'error',signal:AbortSignal.timeout(options.timeout||(route==='refresh'?10000:70000))});break;}catch(err){if(method==='GET'&&attempt===0){await new Promise(r=>setTimeout(r,200));continue;}throw Error(err.name==='TimeoutError'?'The Hermes bridge timed out. Check the connection; a submitted action may already be queued.':'Cannot reach the Hermes bridge. Check the URL, network/tunnel, and HTTPS certificate. Redirects are not followed.');}}
  const max=16*1024*1024;let bytes=0;const chunks=[];
  for await(const chunk of response.body){bytes+=chunk.byteLength;if(bytes>max)throw Error('Bridge response is too large.');chunks.push(Buffer.from(chunk));}
  let result;try{result=JSON.parse(Buffer.concat(chunks).toString('utf8'));}catch{throw Error('This address did not return the Nudge bridge API. Hermes needs the companion bridge installed beside it.');}

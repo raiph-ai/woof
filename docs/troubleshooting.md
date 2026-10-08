@@ -43,6 +43,10 @@ Background badge checks happen once per minute; this is not push streaming. Avoi
 
 Woof does not start Hermes scheduling. Check the scheduler/gateway serving the selected profile, job enabled state, supported schedule syntax, and provider credentials. Scheduler heartbeat freshness is a diagnostic, not proof of successful execution. Dismissing a card does not pause a job.
 
+## Closable connection errors
+
+Error and information banners have an × button; Escape closes the main error when no dialog is open. Dismissed identical connection errors do not reappear on every poll. A successful state read clears a connection-failure banner. A new explicit action may surface a new error. Ordinary GET reads retry once after a brief transient transport failure; POST actions never auto-replay because they may already have been accepted. History-reflection submission has a bounded 10-second acknowledgement timeout and visible progress; real offline bridges still require connection recovery.
+
 ## Suggestions are stale or an action failed
 
 Use explicit Reflect on my history for a new bounded model analysis. Saved model cards are intentionally not overwritten by routine fallback extraction. A suggestion is not proof of unfinished work. Check the resulting error notification for provider/auth/approval failures; do not blindly retry an action that may partly have succeeded.

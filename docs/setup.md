@@ -12,7 +12,7 @@ They can be the same machine, but do not assume they are. Install the desktop ap
 ## 1. Install the client
 
 1. Download the current installer from the private release.
-2. Verify it against the release's `SHA256SUMS.txt`, for example `shasum -a 256 Woof-0.3.6-arm64.dmg`.
+2. Verify it against the release's `SHA256SUMS.txt`, for example `shasum -a 256 Woof-0.3.7-arm64.dmg`.
 3. Quit an older Woof/Hermes Nudge client before replacing it.
 4. Open the DMG and drag Woof into Applications.
 5. Launch Woof. Because this build is ad-hoc signed rather than notarized, macOS may require **System Settings → Privacy & Security → Open Anyway** after the first launch attempt. Do not disable Gatekeeper globally.

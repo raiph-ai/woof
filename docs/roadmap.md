@@ -2,7 +2,7 @@
 
 [Documentation home](index.md)
 
-## Current baseline: 0.3.6
+## Current baseline: 0.3.7
 
 - macOS Apple-silicon desktop client and independently deployed authenticated bridge.
 - Approved white/grey direwolf, closer-set round eyes, smaller highlights, neutral resting mouth, circular bark/howl mouth, tail wag, and unread badge.
@@ -25,7 +25,9 @@
 - **0.3.5:** Wolf bark label/MP3 playback wiring and smaller neutral resting mouth; this still referenced the wrong synthesized sample.
 - **0.3.6:** actual uploaded bark decoded to WAV, first-open cached rendering, concurrent-fetch sharing, smaller English-only native package. The previous audio-source mistake is corrected, not hidden in the changelog.
 
-Only the current baseline is supplied as the initial private release; historical builds are not claimed as GitHub release assets.
+- **0.3.7:** closable error/status banners, polling-error dismissal deduplication, cool-blue notification palette, safe GET-only network retry, explicit reflection progress, and live model-backed reflection verification.
+
+Published private downloads are listed in the repository Releases section; not every historical milestone is a release asset.
 
 ## Next priorities — proposed, not implemented
 
