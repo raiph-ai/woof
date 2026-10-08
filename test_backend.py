@@ -160,7 +160,8 @@ class BackendTests(unittest.TestCase):
         def cli(args, **kwargs):
             calls.append(args)
             self.cron_store([{'id': 'new-job', 'name': args[-1], 'schedule_display': args[2],
-                              'schedule': {'kind': 'interval'}, 'enabled': True, 'deliver': ['local']}])
+                              'schedule': {'kind': 'interval'}, 'prompt': args[3],
+                              'enabled': True, 'deliver': ['local']}])
             return '\x1b[32mCreated job: new-job\x1b[0m\n'
         with patch.object(self.app, 'cli', side_effect=cli):
             result = self.app.schedule({'title': 'Check', 'prompt': 'Be harmless', 'schedule': '30m', 'mode': 'heartbeat'})
@@ -173,6 +174,240 @@ class BackendTests(unittest.TestCase):
         with patch.object(self.app, 'cli', return_value='Created job: missing'):
             with self.assertRaises(RuntimeError):
                 self.app.schedule({'title': 'Check', 'prompt': 'Be harmless', 'schedule': 'every 2h', 'mode': 'cron'})
+
+    def managed_fixture(self, jid='owned', enabled=False):
+        job = {'id': jid, 'name': 'Email checkup', 'prompt': 'Check email',
+               'schedule': {'kind': 'interval', 'minutes': 120}, 'schedule_display': 'every 120m',
+               'deliver': 'local', 'enabled': enabled, 'last_status': 'ok',
+               'last_run_at': '2026-10-08T04:17:31Z', 'next_run_at': '2026-10-08T06:17:31Z'}
+        self.cron_store([job])
+        with self.app.connect() as db:
+            self.app._notify(db, 'created-' + jid, job['name'], 'Created Hermes schedule: every 2h', jid)
+        return job
+
+    def fake_custom_cli(self, args, **kwargs):
+        jobs = self.app.jobs_raw()
+        if args[:2] == ['cron', 'remove']:
+            self.cron_store([j for j in jobs if j['id'] != args[2]])
+            return 'Removed job'
+        self.assertEqual(args[:2], ['cron', 'edit'])
+        job = next(j for j in jobs if j['id'] == args[2])
+        for flag, field in [('--name', 'name'), ('--prompt', 'prompt'), ('--deliver', 'deliver')]:
+            job[field] = args[args.index(flag) + 1]
+        schedule = args[args.index('--schedule') + 1]
+        match = backend.re.fullmatch(r'every (\d+)([mhd])', schedule)
+        if match:
+            minutes = int(match[1]) * {'m': 1, 'h': 60, 'd': 1440}[match[2]]
+            job['schedule'] = {'kind': 'interval', 'minutes': minutes}
+            job['schedule_display'] = f'every {minutes}m'
+        else:
+            job['schedule'] = {'kind': 'cron', 'expr': schedule}
+            job['schedule_display'] = schedule
+        self.cron_store(jobs)
+        return 'Edited job'
+
+    def test_custom_legacy_exact_ownership_and_annotation(self):
+        job = self.managed_fixture('14dbc75a3840', enabled=True)
+        unrelated = dict(job, id='unrelated')  # Identical name is NOT ownership.
+        self.cron_store([job, unrelated])
+        with self.app.connect() as db:
+            self.app._notify(db, 'result', job['name'], 'Email result', job['id'])
+            self.app._notify(db, 'other-result', job['name'], 'Other result', 'unrelated')
+            self.app._notify(db, 'created-fake', 'Same name', 'Not a creation confirmation', 'fake')
+            self.app._notify(db, 'created-wrong-id', 'Same name', 'Created Hermes schedule: every 2h', 'wrong')
+        status, _, body = self.http(path='/api/custom')
+        self.assertEqual(status, 200)
+        entries = json.loads(body)['notifications']
+        self.assertEqual([n['id'] for n in entries], ['14dbc75a3840'])
+        self.assertEqual(entries[0]['prompt'], 'Check email')
+        self.assertTrue(entries[0]['exists'])
+        self.assertEqual(set(entries[0]), {'id', 'title', 'prompt', 'schedule', 'mode', 'enabled',
+                                         'last_status', 'last_run_at', 'next_run_at', 'exists'})
+        state = self.app.state()
+        self.assertEqual(state['custom_notifications'], entries)
+        notes = {n['id']: n for n in state['notifications']}
+        self.assertTrue(notes['result']['custom'])
+        self.assertNotIn('custom', notes['other-result'])
+        self.assertNotIn('custom', notes['created-fake'])
+        app2 = backend.Companion(self.home, hermes=self.hermes, profile='default')
+        try:
+            self.assertEqual(app2.custom()['notifications'], entries)
+        finally:
+            app2.close()
+
+    def test_custom_schedule_durable_ownership_only_on_verified_create(self):
+        def cli(args, **kwargs):
+            self.cron_store([{'id': 'created', 'name': args[-1], 'prompt': args[3],
+                              'schedule': {'kind': 'interval', 'minutes': 120},
+                              'schedule_display': 'every 120m', 'deliver': 'local', 'enabled': True}])
+            return 'Created job: created'
+        with patch.object(self.app, 'cli', side_effect=cli):
+            self.app.schedule({'title': 'Check', 'prompt': 'Check it', 'schedule': 'every 2h', 'mode': 'cron'})
+        with self.app.connect() as db:
+            self.assertEqual(db.execute('SELECT mode FROM managed_jobs WHERE id=?', ('created',)).fetchone()[0], 'cron')
+        self.assertEqual(self.app.custom()['notifications'][0]['prompt'], 'Check it')
+        with patch.object(self.app, 'cli', return_value='Created job: missing'):
+            with self.assertRaises(RuntimeError):
+                self.app.schedule({'title': 'Check', 'prompt': 'Check it', 'schedule': 'every 2h', 'mode': 'cron'})
+        with self.app.connect() as db:
+            self.assertEqual(db.execute('SELECT count(*) FROM managed_jobs').fetchone()[0], 1)
+
+    def test_custom_edit_verified_normalized_interval_and_mode_prefixes(self):
+        self.managed_fixture()
+        payload = {'id': 'owned', 'title': 'New title', 'prompt': 'New prompt', 'schedule': '2h', 'mode': 'heartbeat'}
+        with patch.object(self.app, 'cli', side_effect=self.fake_custom_cli) as cli:
+            status, _, body = self.http('POST', '/api/custom-edit', payload)
+            self.assertEqual(status, 200, body)
+            notification = json.loads(body)['notification']
+            self.assertEqual(notification['schedule'], 'every 120m')
+            self.assertEqual(notification['title'], '[heartbeat-style] New title')
+            self.assertFalse(notification['enabled'])
+            self.assertEqual(notification['mode'], 'heartbeat')
+            self.assertIn('--deliver', cli.call_args.args[0])
+            payload.update(title=notification['title'], prompt=notification['prompt'])
+            self.app.custom_edit(payload)
+            self.assertEqual(self.app.jobs_raw()[0]['name'].count('[heartbeat-style]'), 1)
+            payload.update(mode='cron', schedule='0 9 * * *')
+            final = self.app.custom_edit(payload)['notification']
+            self.assertEqual(final['title'], 'New title')
+            self.assertEqual(final['prompt'], 'New prompt')
+            self.assertEqual(final['schedule'], '0 9 * * *')
+        with patch.object(self.app, 'cli') as cli:
+            payload.update(mode='heartbeat')
+            self.assertEqual(self.http('POST', '/api/custom-edit', payload)[0], 400)
+            cli.assert_not_called()
+
+    def test_custom_once_schedule_is_editable_and_unchanged_reads_do_not_write(self):
+        job = self.managed_fixture()
+        timestamp = '2030-01-02T03:04:00+00:00'
+        job.update(schedule={'kind': 'once', 'run_at': timestamp},
+                   schedule_display='once at 2030-01-02 03:04')
+        self.cron_store([job])
+        first = self.app.custom()['notifications'][0]
+        self.assertEqual(first['schedule'], timestamp)
+        self.assertTrue(self.app.schedule_matches(job, first['schedule']))
+        statements = []
+        original = self.app.connect
+        def traced():
+            db = original()
+            db.set_trace_callback(statements.append)
+            return db
+        with patch.object(self.app, 'connect', side_effect=traced):
+            self.assertEqual(self.app.custom()['notifications'][0], first)
+        self.assertFalse(any(s.startswith('UPDATE managed_jobs SET snapshot=') for s in statements))
+
+    def test_custom_edit_rejects_failed_readback(self):
+        original = self.managed_fixture()
+        payload = {'id': 'owned', 'title': 'New', 'prompt': 'New prompt', 'schedule': 'every 2h', 'mode': 'cron'}
+        for mutation in ({'name': 'wrong'}, {'prompt': 'wrong'},
+                         {'schedule': {'kind': 'interval', 'minutes': 60}, 'schedule_display': 'every 60m'},
+                         {'deliver': 'slack'}, {'enabled': True}):
+            self.cron_store([original])
+            def cli(args, **kwargs):
+                self.fake_custom_cli(args)
+                self.cron_store([dict(self.app.jobs_raw()[0], **mutation)])
+                return 'Edited'
+            with patch.object(self.app, 'cli', side_effect=cli):
+                self.assertEqual(self.http('POST', '/api/custom-edit', payload)[0], 502)
+        with self.app.connect() as db:
+            self.assertEqual(db.execute('SELECT count(*) FROM managed_jobs WHERE title=?', ('New',)).fetchone()[0], 0)
+
+    def test_custom_delete_tombstone_history_and_idempotence(self):
+        job = self.managed_fixture()
+        self.cron_store([job, dict(job, id='unrelated')])
+        with self.app.connect() as db:
+            self.app._notify(db, 'historical', 'Email result', 'Keep me', 'owned')
+        with patch.object(self.app, 'cli', side_effect=self.fake_custom_cli) as cli:
+            for _ in range(2):
+                status, _, body = self.http('POST', '/api/custom-delete', {'id': 'owned'})
+                self.assertEqual(status, 200)
+                self.assertEqual(json.loads(body), {'id': 'owned', 'deleted': True})
+            cli.assert_called_once_with(['cron', 'remove', 'owned'])
+        self.assertEqual([j['id'] for j in self.app.jobs_raw()], ['unrelated'])
+        self.assertEqual(self.app.custom()['notifications'], [])
+        notes = {n['id']: n for n in self.app.state()['notifications']}
+        self.assertEqual(notes['historical']['body'], 'Keep me')
+        self.assertTrue(notes['historical']['custom'])
+        app2 = backend.Companion(self.home, hermes=self.hermes, profile='default')
+        try:
+            self.assertEqual(app2.custom()['notifications'], [])
+            self.assertTrue(next(n for n in app2.state()['notifications'] if n['id'] == 'historical')['custom'])
+        finally:
+            app2.close()
+        payload = {'id': 'owned', 'title': 'New', 'prompt': 'New', 'schedule': 'every 2h', 'mode': 'cron'}
+        self.assertEqual(self.http('POST', '/api/custom-edit', payload)[0], 404)
+
+    def test_custom_delete_verification_failure_no_tombstone(self):
+        self.managed_fixture()
+        self.app.custom()
+        with patch.object(self.app, 'cli', return_value='Removed'):
+            self.assertEqual(self.http('POST', '/api/custom-delete', {'id': 'owned'})[0], 502)
+        self.assertEqual(len(self.app.custom()['notifications']), 1)
+
+    def test_custom_unrelated_rejection_and_auth(self):
+        job = self.managed_fixture()
+        self.cron_store([job, dict(job, id='unrelated')])
+        payload = {'id': 'unrelated', 'title': 'New', 'prompt': 'New', 'schedule': 'every 2h', 'mode': 'cron'}
+        with patch.object(self.app, 'cli') as cli:
+            for endpoint in ('/api/custom-edit', '/api/custom-delete'):
+                self.assertEqual(self.http('POST', endpoint, payload)[0], 404)
+                self.assertEqual(self.http('POST', endpoint, payload, auth=False)[0], 401)
+            cli.assert_not_called()
+        self.assertEqual(self.http(path='/api/custom', auth=False)[0], 401)
+
+    def test_custom_missing_completed_entry_and_output(self):
+        self.managed_fixture()
+        self.app.custom()
+        self.cron_store([])
+        directory = self.home / 'cron' / 'output' / 'owned'
+        directory.mkdir(parents=True)
+        (directory / 'completed.md').write_text('One-shot completed')
+        state = self.app.state()
+        entry = state['custom_notifications'][0]
+        self.assertFalse(entry['exists'])
+        self.assertFalse(entry['enabled'])
+        self.assertIsNone(entry['next_run_at'])
+        self.assertEqual(entry['last_status'], 'ok')
+        self.assertEqual(entry['prompt'], 'Check email')
+        self.assertTrue(next(n for n in state['notifications'] if n['body'] == 'One-shot completed')['custom'])
+        with patch.object(self.app, 'cli') as cli:
+            payload = {'id': 'owned', 'title': 'New', 'prompt': 'New', 'schedule': 'every 2h', 'mode': 'cron'}
+            self.assertEqual(self.http('POST', '/api/custom-edit', payload)[0], 404)
+            self.assertEqual(self.http('POST', '/api/custom-delete', {'id': 'owned'})[0], 200)
+            cli.assert_not_called()
+
+    def test_custom_schedule_verification_shapes(self):
+        matches = self.app.schedule_matches
+        self.assertTrue(matches({'schedule': {'kind': 'interval', 'minutes': 120}}, 'every 2h'))
+        self.assertFalse(matches({'schedule': {'kind': 'interval', 'minutes': 60},
+                                  'schedule_display': 'every 2h'}, 'every 2h'))
+        self.assertFalse(matches({'schedule': {'kind': 'once'}, 'schedule_display': '2h'}, '2h'))
+        self.assertTrue(matches({'schedule': {'kind': 'once', 'run_at': '2026-10-08T09:00:00-07:00'}},
+                                '2026-10-08T16:00:00Z'))
+        self.assertTrue(matches({'schedule': {'kind': 'once', 'run_at': '2026-10-08T09:00:00-07:00'}},
+                                '2026-10-08T09:00:00'))
+        self.assertTrue(matches({'schedule': {'kind': 'once', 'run_at': '2026-10-08T09:00:00Z',
+                                              'display': 'once in 30m'}}, 'in 30m'))
+
+    def test_custom_migration_on_startup_without_listing(self):
+        self.managed_fixture('14dbc75a3840')
+        app2 = backend.Companion(self.home, hermes=self.hermes, profile='default')
+        try:
+            with app2.connect() as db:
+                row = db.execute('SELECT * FROM managed_jobs WHERE id=?', ('14dbc75a3840',)).fetchone()
+                self.assertEqual(row['title'], 'Email checkup')
+                self.assertEqual(row['schedule'], 'every 2h')
+                self.assertIsNone(row['deleted_at'])
+        finally:
+            app2.close()
+
+    def test_custom_legacy_missing_entry(self):
+        self.managed_fixture()
+        self.cron_store([])
+        entry = self.app.custom()['notifications'][0]
+        self.assertFalse(entry['exists'])
+        self.assertEqual(entry['schedule'], 'every 2h')
+        self.assertEqual(entry['prompt'], '')  # No invention when creation record lacks prompt.
 
     def test_request_async_result_and_error_persist(self):
         with patch.object(self.app, 'chat', return_value=('Done', 'sid')):

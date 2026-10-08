@@ -30,7 +30,7 @@ Both suggestion panels show counts of visible, non-dismissed cards. Expand the r
 
 ## Notification source settings
 
-Watchdog, heartbeat-style, and executed-cron results have independent switches, off by default. These are not interchangeable categories. Ordinary assistant replies and schedule-creation confirmations remain normal notifications. Casual discussion of monitoring does not turn a reply into a watchdog event.
+Watchdog, heartbeat-style, and unrelated executed-cron results have independent switches, off by default. These are not interchangeable categories. Results from notifications you created through Woof are always eligible, independently of those switches; the existing inbox cutoff and local dismissal still apply. Ordinary assistant replies and schedule-creation confirmations remain normal notifications. Casual discussion of monitoring does not turn a reply into a watchdog event.
 
 Hidden sources do not inflate the badge or play alerts. Enabling a source reveals qualifying old cards quietly rather than sounding for all of them; subsequent newly arriving events can alert normally.
 
@@ -54,7 +54,7 @@ Drag panel handles to reorder them, or use Option+Up/Down. Panel order and discl
 
 New notification opens the scheduling form. Its cron mode accepts Hermes schedule syntax; heartbeat-style mode creates a recurring Hermes cron check, not a separate heartbeat-file engine. Scheduler execution still depends on the existing Hermes scheduler.
 
-Scheduled check-ins and Sent to Hermes are not visible panels, although underlying scheduling/request APIs remain. Jobs continue running when cards are dismissed or Woof is hidden. API pause/resume/run capabilities remain in the bridge; the current UI does not expose the former dedicated job panel.
+Scheduled check-ins and Sent to Hermes are not visible panels, although underlying scheduling/request APIs remain. Jobs continue running when cards are dismissed or Woof is hidden. Settings → Manage custom notifications shows Woof-created schedules, task instructions, active/paused status, and last/next runs. Edit changes the name, task instructions, type, or schedule without running it immediately or changing its paused state. Pause/Resume controls future execution. Delete asks for confirmation, removes the schedule from Hermes, verifies removal, and preserves existing result cards. Completed or externally removed schedules appear as no longer scheduled and can be removed from this management list. Unrelated profile jobs are not listed or editable here.
 
 ## Idle behavior
 

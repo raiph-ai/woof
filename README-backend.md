@@ -69,7 +69,8 @@ The native Electron shell loads a bundled renderer and uses authenticated main-p
 
 `GET /api/state` retains the agreed shape:
 
-- `notifications`: `{id,title,body,created_at,read,job_id?,session_id?,message_id?,source?,message_timestamp?}`
+- `notifications`: `{id,title,body,created_at,read,job_id?,custom?:true,session_id?,message_id?,source?,message_timestamp?}`
+- `custom_notifications`: the same managed entries returned by `GET /api/custom` (see below)
 - `proactive` and `ideas`: `{id,title,body,prompt,source?}`
 - `jobs`: `{id,name,schedule,enabled,last_status?}`
 - `requests`: `{id,title,status,body}`
@@ -82,6 +83,8 @@ The newest 300 notifications and 100 requests are returned. Older records remain
 | POST | Body | Success |
 |---|---|---|
 | `/api/schedule` | `{title,prompt,schedule,mode:"cron"\|"heartbeat"}` | HTTP 200 `{id,job,mode}` |
+| `/api/custom-edit` | `{id,title,prompt,schedule,mode:"cron"\|"heartbeat"}` | HTTP 200 `{notification:managedEntry}` |
+| `/api/custom-delete` | `{id}` | HTTP 200 `{id,deleted:true}` |
 | `/api/request` | `{prompt,title?,source_session?}` | HTTP 202 `{id,status:"queued"}` |
 | `/api/refresh` | `{}` | HTTP 202 `{id,status:"queued"}` or `{status:"running"}` |
 | `/api/notification` | `{id,read:true}` | HTTP 200 `{id,read:true}` |
@@ -89,11 +92,19 @@ The newest 300 notifications and 100 requests are returned. Older records remain
 
 Async requests transition `queued` → `running` → `completed` or `error`. Poll `/api/state`; a result/error also becomes a durable notification. Invalid input is HTTP 400, unknown jobs/notifications HTTP 404, CLI/integration errors HTTP 502. Busy submission is HTTP 400. API errors have `{error: "..."}` bodies.
 
+## Woof-owned custom notifications
+
+Authenticated `GET /api/custom` returns `{notifications:[{id,title,prompt,schedule,mode,enabled,last_status,last_run_at,next_run_at,exists}]}`. `mode` is `cron` or `heartbeat`; status/timestamps may be null. Only non-deleted Woof-owned jobs appear. Ownership lives in the companion-only `managed_jobs` ledger, recorded after verified creation. Legacy migration accepts only an exact `created-JOBID` notification whose `job_id` is `JOBID` and whose body begins `Created Hermes schedule: `. Names, prompts and ordinary cron output never establish ownership. The legacy Email checkup creation confirmation can therefore be adopted on bridge activation without altering Hermes profile data.
+
+The list reads current job metadata and retains a last-known snapshot for missing/completed jobs. Missing jobs remain listed with `exists:false`, `enabled:false` and `next_run_at:null`; unknown legacy prompts are empty strings, not invented. `POST /api/custom-edit` rejects missing, deleted and unrelated jobs. It uses supported `cron edit ID --name TITLE --prompt PROMPT --schedule SCHEDULE --deliver local`, then verifies the exact name/prompt, equivalent schedule, local delivery and unchanged enabled state. Interval verification compares canonical minutes so `every 2h` can read back as `every 120m`. Heartbeat creation/editing share the same positive m/h/d interval validation. The `[heartbeat-style]` title and explanatory prompt prefix are applied once; switching to cron removes these wrappers.
+
+`POST /api/custom-delete` accepts owned IDs only, uses `cron remove ID` if the job exists, verifies its absence, and tombstones the ledger row. Already missing/completed owned jobs can be tombstoned without a CLI call; repeated tombstoned deletes are safe. Notification history and ownership are never deleted. Historical/new result notifications carry `custom:true` only when their exact `job_id` is in this ledger, including tombstones. Unrelated cron notifications omit `custom` entirely. This lets clients show custom results without turning on their global cron source. Polling also checks owned output directories for jobs no longer in the cron store, preserving completed one-shot results. Generic `/api/job` pause/resume/run remains unchanged and profile-wide.
+
 ## Real Hermes integration
 
 All calls explicitly use the configured executable, profile and home. No shell interpolation, `shell=True`, `--yolo`, core edits, or configuration edits are used. Prompts for immediate requests are passed on stdin via `--query-file -`, not exposed in process arguments. Requests use `chat -Q --oneshot --max-turns 8 --run-budget 120 --source nudge-request --format stream-json`. Hermes tool approvals remain in force. Requests are new sessions; `source_session` is provenance in the prompt, not an automatic continuation of a possibly stale conversation.
 
-Scheduling uses supported `cron create SCHEDULE PROMPT --deliver local --name TITLE`, followed by a read-back of the exact job. User submissions create enabled jobs. `heartbeat` is explicitly a **heartbeat-style interval check implemented as Hermes cron**, not a native heartbeat feature; interval shorthand such as `30m` becomes `every 30m`. Cron mode preserves Hermes semantics (`30m` once, `every 2h` repeating, or a cron expression). No analysis or recurring jobs are created on backend startup. Existing profile jobs are displayed; pause/resume/run accept only exact IDs found in that profile store. Pause/resume effects are read back. Manual run may execute immediately or be queued by Hermes for its next scheduler tick; the CLI outcome is preserved.
+Scheduling uses supported `cron create SCHEDULE PROMPT --deliver local --name TITLE`, followed by a read-back of the exact job. User submissions create enabled jobs. `heartbeat` is explicitly a **heartbeat-style interval check implemented as Hermes cron**, not a native heartbeat feature; interval shorthand such as `30m` becomes `every 30m`. Cron mode preserves the installed Hermes semantics (`30m` or `every 2h` repeating, `in 30m` once, an ISO timestamp, or a cron expression). No analysis or recurring jobs are created on backend startup. Existing profile jobs are displayed; pause/resume/run accept only exact IDs found in that profile store. Pause/resume effects are read back. Manual run may execute immediately or be queued by Hermes for its next scheduler tick; the CLI outcome is preserved.
 
 Scheduled jobs require an existing Hermes scheduler/gateway serving the selected profile. Nudge observes but does not start or reconfigure that scheduler. Local delivery means results are observed from the profile's cron output/status, not sent to messaging platforms.
 
@@ -128,6 +139,8 @@ Cron polling happens on state reads and every 10 seconds while the backend runs.
 Tests use temporary profile homes and explicit executable fixtures; all Hermes actions are mocked, with no real jobs or model requests. Coverage includes the original functional cases plus profile/environment isolation, executable discovery, authenticated bridge identity, exact remote Host/Origin policy, insecure bind refusal, TLS validation, direct TLS authentication and Secure cookies, reverse-proxy cookies, duplicate headers, timeout platform branches, scheduler markers and fail-closed tool-use rejection. The direct TLS test generates a temporary self-signed certificate using `openssl`; it is skipped if that optional test utility is absent. Production TLS needs only Python's standard library.
 
 Watcher tests insert messages only into isolated temporary fixture databases: no old backfill, new final assistant import, preserved Slack content/provenance, exclusions, 32,000-character truncation, stable UID dedupe and restart, several bounded backlog batches, older timestamps and companion request reconciliation. Reflection tests verify concrete assistance/project/open-loop prompt instructions, outcome context, exact provenance validation and model-card preservation after new history. The connected profile's live `state.db` was inspected read-only for schema and aggregate metadata only, without printing transcripts or inserting synthetic messages.
+
+Tests also cover companion-only custom ownership migration from exact creation records, verified create/edit with canonical intervals, mode prefix handling, authenticated only-owned management, failed readbacks, unrelated-job rejection, delete idempotence/tombstones, historical custom classification, and missing/completed job outputs.
 
 To activate a deployment update, restart **only this bridge**, retaining its existing launch arguments, profile, token and companion database. For a selected profile the equivalent foreground command is `python3 -B backend.py --profile your-profile --hermes-home /path/to/hermes-home`; retain any existing `--hermes`, network or port overrides. Do not run a second listener on an occupied port. The first updated activation establishes the no-backfill checkpoint; later restarts resume it. No frontend rebuild or Hermes gateway/core restart is needed for these backend changes.
 

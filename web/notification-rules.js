@@ -1,6 +1,6 @@
 // Shared by the desktop API proxy and its badge polling; preferences never delete server data.
 function notificationKind(item){
- if(String(item.id||'').startsWith('created-'))return 'message';
+ if(item.custom===true||String(item.id||'').startsWith('created-'))return 'message';
  if(['watchdog','heartbeat','cron','message'].includes(item.category))return item.category;
  const source=String(item.source||'').toLowerCase(),title=String(item.title||''),firstLine=String(item.body||'').split('\n')[0].trim();
  if(/watchdog/.test(source)||(/^watchdog[\s:_-]/i.test(title))||(item.job_id&&/\bwatchdog\b/i.test(title))||/^\[watchdog(?:[: \]]|$)|^WATCHDOG_(?:OK|ALERT|ERROR|WARNING)\b/.test(firstLine))return 'watchdog';

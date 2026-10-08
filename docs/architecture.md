@@ -40,7 +40,7 @@ It does not write into Hermes session history. Scheduling changes happen through
 5. Backlogs continue from the consumed cursor rather than skipping to the newest rows.
 6. Message provenance is returned separately; bodies are capped at 32,000 characters. Companion request/cron results are reconciled when identity permits.
 
-The API returns the newest 300 saved notifications and 100 requests; older data remains in the companion DB. A separate desktop cutoff/source filter determines visibility and alerts.
+The API returns the newest 300 saved notifications and 100 requests; older data remains in the companion DB. A separate desktop cutoff/source filter determines visibility and alerts. Woof-created schedules are recorded in a durable managed-job ledger, with legacy ownership migrated only from matching creation confirmations. Their results carry custom:true and bypass generic cron/health source opt-outs, but not the desktop date cutoff. Deleted schedules retain tombstone ownership for previous results. New authenticated custom-list/edit/delete routes are ownership-checked; edits/removals use supported Hermes CLI commands and verify readback. Unrelated profile jobs are never adopted by name.
 
 ## Suggestions
 

@@ -1,4 +1,4 @@
-const API_METHODS={state:'GET',info:'GET',schedule:'POST',request:'POST',refresh:'POST',notification:'POST',job:'POST'};
+const API_METHODS={state:'GET',info:'GET',custom:'GET','custom-edit':'POST','custom-delete':'POST',schedule:'POST',request:'POST',refresh:'POST',notification:'POST',job:'POST'};
 function validateConnection(input){
  if(!input||typeof input.serverUrl!=='string')throw Error('Enter the Hermes server URL.');
  const raw=input.serverUrl.trim();let u;try{u=new URL(raw);}catch{throw Error('Use a complete URL such as https://hermes.example.com or http://127.0.0.1:47831.');}

@@ -10,7 +10,8 @@
 - `shell-utils.cjs`: display bounds and panel placement.
 - `backend.py`: stdlib bridge, profile discovery, read-only history, durable outcomes, reflection, scheduler integration.
 - `web/app.js`: three panels and user actions; `settings.js`/`panels.js`: configuration and presentation.
-- `web/notification-rules.js`: shared cutoff/source classification.
+- `web/notification-rules.js`: shared cutoff/source classification, with explicit Woof-created results bypassing unrelated cron source opt-outs.
+- `web/custom-notifications.js`: Settings custom-schedule manager and verified edit/pause/resume/delete flows.
 - `web/mascot.svg`/`mascot.js`: approved artwork, animation, badge, and audio playback.
 - `scripts/build_mascot.py`: synchronize inline animated markup with the SVG.
 - `scripts/trim_client.py`: strip generated non-English runtime locales, retaining English variants, ICU, graphics/audio libraries.
@@ -37,6 +38,8 @@ The repository's Actions workflow runs portable unit/backend/browser-contract te
 node test-notification-prefs.cjs
 node test-mascot-alerts.cjs
 node test-fast-open.cjs
+node test-reflection-errors.cjs
+node test-custom-notifications.cjs
 node test-layout.cjs
 node test-glass.cjs
 node test-panels.cjs

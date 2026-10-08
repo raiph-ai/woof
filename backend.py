@@ -322,7 +322,11 @@ class Companion:
               CREATE TABLE IF NOT EXISTS seen (key TEXT PRIMARY KEY);
               CREATE TABLE IF NOT EXISTS message_provenance
                 (notification_id TEXT PRIMARY KEY,session_id TEXT,message_id TEXT,source TEXT,message_timestamp);
-              CREATE TABLE IF NOT EXISTS request_sessions (session_id TEXT PRIMARY KEY,request_id TEXT);''')
+              CREATE TABLE IF NOT EXISTS request_sessions (session_id TEXT PRIMARY KEY,request_id TEXT);
+              CREATE TABLE IF NOT EXISTS managed_jobs
+                (id TEXT PRIMARY KEY,title TEXT,prompt TEXT,schedule TEXT,mode TEXT,
+                 created_at TEXT,deleted_at TEXT,snapshot TEXT);''')
+            self._backfill_owned(db)
             rows = db.execute("SELECT id,title FROM requests WHERE status IN ('queued','running')").fetchall()
             for row in rows:
                 db.execute("UPDATE requests SET status='error',body=? WHERE id=?",
@@ -523,6 +527,55 @@ class Companion:
                              else str(schedule),
                 'enabled': bool(job.get('enabled', True)), 'last_status': job.get('last_status')}
 
+    def _backfill_owned(self, db):
+        # Only exact creation confirmations are evidence of Woof ownership.
+        for note in db.execute("SELECT * FROM notifications WHERE id GLOB 'created-*' AND job_id IS NOT NULL AND id='created-' || job_id"):
+            if (not ID_PATTERN.fullmatch(note['job_id']) or
+                    not note['body'].startswith('Created Hermes schedule: ')):
+                continue
+            mode = 'heartbeat' if note['title'].startswith('[heartbeat-style] ') else 'cron'
+            db.execute('INSERT OR IGNORE INTO managed_jobs VALUES (?,?,?,?,?,?,NULL,?)',
+                       (note['job_id'], note['title'], '', note['body'][len('Created Hermes schedule: '):], mode,
+                        note['created_at'], '{}'))
+
+    def _custom_list(self, db, jobs):
+        self._backfill_owned(db)
+        live = {job['id']: job for job in jobs}
+        result = []
+        for row in db.execute('SELECT * FROM managed_jobs WHERE deleted_at IS NULL ORDER BY created_at,id'):
+            job = live.get(row['id'])
+            snapshot = json.loads(row['snapshot'])
+            if job is not None:
+                snapshot = {'title': job.get('name') or row['title'],
+                            'prompt': job.get('prompt', row['prompt']),
+                            'schedule': (job['schedule']['run_at'] if isinstance(job.get('schedule'), dict) and
+                                         job['schedule'].get('kind') == 'once' and job['schedule'].get('run_at')
+                                         else self.job_view(job)['schedule']),
+                            'enabled': bool(job.get('enabled', True)),
+                            'last_status': job.get('last_status'),
+                            'last_run_at': job.get('last_run_at'), 'next_run_at': job.get('next_run_at')}
+                if snapshot != json.loads(row['snapshot']):
+                    db.execute('UPDATE managed_jobs SET snapshot=? WHERE id=?', (json.dumps(snapshot), row['id']))
+            entry = {'id': row['id'], 'title': row['title'], 'prompt': row['prompt'],
+                     'schedule': row['schedule'], 'mode': row['mode'], 'enabled': False,
+                     'last_status': None, 'last_run_at': None, 'next_run_at': None, **snapshot,
+                     'exists': job is not None}
+            if job is None:
+                entry.update(enabled=False, next_run_at=None)
+            result.append(entry)
+        return result
+
+    def custom(self):
+        with self.lock, self.connect() as db:
+            return {'notifications': self._custom_list(db, self.jobs_raw())}
+
+    def _owned(self, db, jid):
+        self._backfill_owned(db)
+        row = db.execute('SELECT * FROM managed_jobs WHERE id=?', (jid,)).fetchone()
+        if row is None:
+            raise LookupError('Unknown Woof custom notification')
+        return row
+
     def poll(self):
         try:
             self.poll_messages()
@@ -530,7 +583,12 @@ class Companion:
             self.error('Assistant message polling failed', exc, 'message-poll-error')
         jobs = self.jobs_raw()
         with self.lock, self.connect() as db:
-            for job in jobs:
+            self._backfill_owned(db)
+            owned = {r['id']: r['title'] for r in db.execute('SELECT id,title FROM managed_jobs')}
+            # Completed one-shot / removed owned jobs can still have unimported outputs.
+            output_jobs = jobs + [{'id': jid, 'name': title} for jid, title in owned.items()
+                                  if jid not in {j['id'] for j in jobs}]
+            for job in output_jobs:
                 jid = identifier(job['id'])
                 base = self.home / 'cron' / 'output' / jid
                 if base.exists() and not base.is_symlink():
@@ -579,8 +637,12 @@ class Companion:
             self.error('Cron polling failed', exc, 'cron-poll-error')
             jobs = []
         with self.lock, self.connect() as db:
+            custom_notifications = self._custom_list(db, jobs)
+            owned = {r['id'] for r in db.execute('SELECT id FROM managed_jobs')}
             notifications = [dict(r) for r in db.execute('SELECT * FROM notifications ORDER BY created_at DESC LIMIT 300')]
             for n in notifications:
+                if n['job_id'] in owned:
+                    n['custom'] = True
                 n['read'] = bool(n['read'])
                 provenance = db.execute('SELECT session_id,message_id,source,message_timestamp '
                                         'FROM message_provenance WHERE notification_id=?', (n['id'],)).fetchone()
@@ -591,18 +653,27 @@ class Companion:
             requests = [dict(r) for r in db.execute('SELECT id,title,status,body FROM requests ORDER BY created_at DESC LIMIT 100')]
             row = db.execute("SELECT value FROM meta WHERE key='suggestions'").fetchone()
             suggestions = json.loads(row['value']) if row else {'proactive': [], 'ideas': []}
-        return {'notifications': notifications, **suggestions, 'jobs': [self.job_view(j) for j in jobs],
+        return {'notifications': notifications, 'custom_notifications': custom_notifications,
+                **suggestions, 'jobs': [self.job_view(j) for j in jobs],
                 'requests': requests, 'status': {'profile': self.profile,
                     'hermes_available': self.hermes.is_file() and os.access(self.hermes, os.X_OK),
                     'analysis_busy': self.analysis_busy, 'scheduler': self.scheduler_status()}}
 
-    def schedule(self, data):
-        title = text(data.get('title'), 'title', 180)
-        prompt = text(data.get('prompt'), 'prompt')
+    @staticmethod
+    def custom_fields(data):
+        title = text(data.get('title'), 'title', 220)
+        prompt = text(data.get('prompt'), 'prompt', 16100)
         schedule = text(data.get('schedule'), 'schedule', 120)
         mode = data.get('mode')
         if mode not in ('cron', 'heartbeat'):
             raise ValueError('mode must be cron or heartbeat')
+        # Manager readback contains the decorated values; never stack prefixes.
+        title = re.sub(r'^(?:\[heartbeat-style\]\s*)+', '', title).strip()
+        prefix = 'Heartbeat-style interval check (implemented as Hermes cron):\n'
+        while prompt.startswith(prefix):
+            prompt = prompt[len(prefix):]
+        title = text(title, 'title', 180)
+        prompt = text(prompt, 'prompt')
         if mode == 'heartbeat':
             if not re.fullmatch(r'(?:every\s+)?[1-9]\d{0,5}\s*[mhd]', schedule, re.I):
                 raise ValueError('heartbeat requires an interval such as every 30m or every 2h')
@@ -612,18 +683,100 @@ class Companion:
             prompt = 'Heartbeat-style interval check (implemented as Hermes cron):\n' + prompt
         if schedule.startswith('-') or prompt.startswith('-'):
             raise ValueError('schedule and prompt cannot begin with a CLI option')
+        return title, prompt, schedule, mode
+
+    @staticmethod
+    def schedule_matches(job, requested):
+        schedule = job.get('schedule') or {}
+        display = job.get('schedule_display') or (schedule.get('display') if isinstance(schedule, dict) else schedule)
+        normalize = lambda s: ' '.join(str(s or '').lower().split())
+        interval = re.fullmatch(r'(?:every\s+)?([1-9]\d*)\s*([mhd])', requested, re.I)
+        if interval:
+            minutes = int(interval[1]) * {'m': 1, 'h': 60, 'd': 1440}[interval[2].lower()]
+            if isinstance(schedule, dict) and schedule.get('kind') == 'interval' and 'minutes' in schedule:
+                return schedule['minutes'] == minutes
+            if isinstance(schedule, dict) and schedule.get('kind') in ('once', 'cron'):
+                return False
+            if normalize(display) == normalize(requested):
+                return True
+            canonical = re.fullmatch(r'every\s+([1-9]\d*)\s*([mhd])', normalize(display))
+            return bool(canonical and int(canonical[1]) * {'m': 1, 'h': 60, 'd': 1440}[canonical[2]] == minutes)
+        if isinstance(schedule, dict):
+            if schedule.get('kind') == 'cron':
+                return (normalize(schedule.get('expr')) == normalize(requested) or
+                        normalize(display) == normalize(requested))
+            if schedule.get('kind') == 'once' and schedule.get('run_at'):
+                if normalize(display) == 'once ' + normalize(requested) and requested.lower().startswith('in '):
+                    return True
+                try:
+                    stored = datetime.fromisoformat(schedule['run_at'].replace('Z', '+00:00'))
+                    expected = datetime.fromisoformat(requested.replace('Z', '+00:00'))
+                    if expected.tzinfo is None:
+                        stored = stored.replace(tzinfo=None)
+                    return stored == expected
+                except ValueError:
+                    pass
+        return normalize(display) == normalize(requested)
+
+    def verify_custom(self, job, title, prompt, schedule, enabled=None):
+        if (not job or job.get('name') != title or job.get('prompt') != prompt or
+                job.get('deliver') not in ('local', ['local']) or
+                not self.schedule_matches(job, schedule) or
+                (enabled is not None and bool(job.get('enabled', True)) != enabled)):
+            raise RuntimeError('Custom job readback did not verify name, prompt, schedule, local delivery and enabled state')
+
+    def schedule(self, data):
+        title, prompt, schedule, mode = self.custom_fields(data)
         output = self.cli(['cron', 'create', schedule, prompt, '--deliver', 'local', '--name', title])
         clean = re.sub(r'\x1b\[[0-9;]*m', '', output)
         match = re.search(r'Created job:\s*([A-Za-z0-9_.:-]+)', clean)
         if not match:
             raise RuntimeError('Cron create did not return an id; inspect Hermes cron list before retrying')
-        jid = match.group(1)
+        jid = identifier(match.group(1))
         job = next((j for j in self.jobs_raw() if j['id'] == jid), None)
-        if not job or job.get('deliver') not in ('local', ['local']):
-            raise RuntimeError('Created job could not be verified with local delivery')
+        self.verify_custom(job, title, prompt, schedule, enabled=True)
         with self.lock, self.connect() as db:
+            db.execute('INSERT INTO managed_jobs VALUES (?,?,?,?,?,?,NULL,?)',
+                       (jid, title, prompt, schedule, mode, now(), '{}'))
             self._notify(db, 'created-' + jid, title, 'Created Hermes schedule: ' + schedule, jid)
+            self._custom_list(db, [job])
         return {'job': self.job_view(job), 'id': jid, 'mode': mode}
+
+    def custom_edit(self, data):
+        jid = identifier(data.get('id'))
+        title, prompt, schedule, mode = self.custom_fields(data)
+        with self.lock, self.connect() as db:
+            row = self._owned(db, jid)
+            if row['deleted_at']:
+                raise LookupError('Custom notification was deleted')
+            before = next((j for j in self.jobs_raw() if j['id'] == jid), None)
+            if before is None:
+                raise LookupError('Custom job no longer exists (possibly completed)')
+            enabled = bool(before.get('enabled', True))
+            self.cli(['cron', 'edit', jid, '--name', title, '--prompt', prompt,
+                      '--schedule', schedule, '--deliver', 'local'])
+            jobs = self.jobs_raw()
+            after = next((j for j in jobs if j['id'] == jid), None)
+            self.verify_custom(after, title, prompt, schedule, enabled)
+            db.execute('UPDATE managed_jobs SET title=?,prompt=?,schedule=?,mode=? WHERE id=?',
+                       (title, prompt, schedule, mode, jid))
+            notification = next(n for n in self._custom_list(db, jobs) if n['id'] == jid)
+            return {'notification': notification}
+
+    def custom_delete(self, data):
+        jid = identifier(data.get('id'))
+        with self.lock, self.connect() as db:
+            row = self._owned(db, jid)
+            if row['deleted_at']:
+                return {'id': jid, 'deleted': True}
+            jobs = self.jobs_raw()
+            self._custom_list(db, jobs)  # Retain last known metadata, never history deletion.
+            if any(j['id'] == jid for j in jobs):
+                self.cli(['cron', 'remove', jid])
+            if any(j['id'] == jid for j in self.jobs_raw()):
+                raise RuntimeError('Custom job removal could not be verified')
+            db.execute('UPDATE managed_jobs SET deleted_at=? WHERE id=?', (now(), jid))
+            return {'id': jid, 'deleted': True}
 
     def submit(self, title, work):
         if not self.slots.acquire(blocking=False):
@@ -879,6 +1032,13 @@ class Handler(BaseHTTPRequestHandler):
                             'profile': self.server.companion.profile,
                             'origin': self.server.origin, 'tls': self.server.tls})
             return
+        if url.path == '/api/custom':
+            try:
+                self.send(200, self.server.companion.custom())
+            except Exception as exc:
+                self.server.companion.error('Custom notification listing failed', exc)
+                self.send(502, {'error': str(exc)[:2000]})
+            return
         if url.path == '/api/state':
             self.send(200, self.server.companion.state())
             return
@@ -920,7 +1080,8 @@ class Handler(BaseHTTPRequestHandler):
             companion = self.server.companion
             routes = {'/api/schedule': companion.schedule, '/api/request': companion.request,
                       '/api/refresh': lambda _: companion.refresh(), '/api/notification': companion.mark,
-                      '/api/job': companion.job}
+                      '/api/job': companion.job, '/api/custom-edit': companion.custom_edit,
+                      '/api/custom-delete': companion.custom_delete}
             if path not in routes:
                 self.send(404, {'error': 'Not found'})
                 return

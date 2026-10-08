@@ -2,7 +2,7 @@
 
 [Documentation home](index.md)
 
-## Current baseline: 0.3.7
+## Current baseline: 0.3.8
 
 - macOS Apple-silicon desktop client and independently deployed authenticated bridge.
 - Approved white/grey direwolf, closer-set round eyes, smaller highlights, neutral resting mouth, circular bark/howl mouth, tail wag, and unread badge.
@@ -26,6 +26,8 @@
 - **0.3.6:** actual uploaded bark decoded to WAV, first-open cached rendering, concurrent-fetch sharing, smaller English-only native package. The previous audio-source mistake is corrected, not hidden in the changelog.
 
 - **0.3.7:** closable error/status banners, polling-error dismissal deduplication, cool-blue notification palette, safe GET-only network retry, explicit reflection progress, and live model-backed reflection verification.
+
+- **0.3.8:** Woof-created schedule results bypass unrelated cron source opt-outs; authenticated, ownership-checked custom notification manager supports verified edits, pause/resume and deletion without erasing previous results. Both client and bridge are updated.
 
 Published private downloads are listed in the repository Releases section; not every historical milestone is a release asset.
 
