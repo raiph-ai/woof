@@ -78,6 +78,316 @@ class BackendTests(unittest.TestCase):
             db.executemany('INSERT INTO messages VALUES (?,?,?,?,?,?)', rows)
         return path
 
+    def test_new_routes_authentication(self):
+        self.assertEqual(self.http(path='/api/todos', auth=False)[0], 401)
+        for route in ('optimize', 'todo-save', 'todo-action', 'health-check', 'health-action'):
+            self.assertEqual(self.http('POST', '/api/' + route, {}, auth=False)[0], 401)
+
+    def test_optimize_analysis_contract_no_mutations(self):
+        payload = {'title': 'Inbox review', 'prompt': 'Check connected inbox', 'schedule': 'every 2h', 'mode': 'cron'}
+        answer = {**payload, 'prompt': 'Only report new actionable inbox findings.',
+                  'alert_when': 'New actionable mail', 'summary': 'Narrow alerts to useful findings'}
+        with self.app.connect() as db:
+            before = list(db.iterdump())
+        with patch.object(self.app, 'cli', return_value=json.dumps({'type': 'result', 'text': json.dumps(answer), 'exit_code': 0})) as cli:
+            result = self.app.optimize(payload)
+        self.assertEqual(result['method'], 'agent')
+        self.assertEqual(result['schedule'], payload['schedule'])
+        self.assertIn('[SILENT]', result['prompt'])
+        args, prompt, timeout = cli.call_args.args
+        self.assertEqual(args[args.index('-t') + 1], 'none')
+        self.assertIn('--ignore-rules', args)
+        self.assertEqual(timeout, 90)
+        for phrase in ('sender', 'subject', 'unchanged previously reported', 'Permission', 'Never send, delete', 'untrusted'):
+            self.assertIn(phrase, prompt)
+        with self.app.connect() as db:
+            self.assertEqual(list(db.iterdump()), before)
+
+    def test_optimize_fail_closed_and_owned_sample_only(self):
+        payload = {'title': 'Inbox', 'prompt': 'Read inbox', 'schedule': '30m', 'mode': 'heartbeat'}
+        with patch.object(self.app, 'chat', side_effect=RuntimeError('Provider unavailable')):
+            with self.assertRaisesRegex(RuntimeError, 'Notification optimization failed'):
+                self.app.optimize(payload)
+        with patch.object(self.app, 'chat') as chat:
+            with self.assertRaises(LookupError):
+                self.app.optimize({**payload, 'id': 'unrelated'})
+            chat.assert_not_called()
+        self.managed_fixture()
+        self.app.custom()  # migrate fixture ownership, not during optimization
+        with self.app.connect() as db:
+            self.app._notify(db, 'sample', 'Inbox', '# Cron Job\n## Prompt\nprivate boilerplate\n## Response\nSynthetic finding', 'owned')
+            self.app._notify(db, 'foreign', 'Other', 'foreign-secret', 'other')
+        answer = {**payload, 'alert_when': 'New findings', 'summary': 'Less noise'}
+        with patch.object(self.app, 'chat', return_value=(json.dumps(answer), None)) as chat:
+            self.app.optimize({**payload, 'id': 'owned'})
+            supplied = chat.call_args.args[0].split('RECENT RESULTS:\n')[1]
+            self.assertIn('Synthetic finding', supplied)
+            self.assertNotIn('private boilerplate', supplied)
+            self.assertNotIn('foreign-secret', supplied)
+        for invalid in ({**answer, 'schedule': 'every 9h'}, {**answer, 'prompt': ''}, {'summary': 'oops'}):
+            with patch.object(self.app, 'chat', return_value=(json.dumps(invalid), None)):
+                with self.assertRaises(RuntimeError):
+                    self.app.optimize(payload)
+
+    def test_owned_outputs_response_silence_duplicates_and_failures(self):
+        job = self.managed_fixture()
+        self.cron_store([job, dict(job, id='unrelated')])
+        bodies = ['WOOF_NO_CHANGE', '[SILENT]', 'Synthetic sender: action A',
+                  'Synthetic sender:  action A', 'Synthetic sender: action B',
+                  'Permission denied', 'Permission denied', 'WOOF_NO_CHANGE plus a problem']
+        for jid in ('owned', 'unrelated'):
+            output = self.home / 'cron' / 'output' / jid
+            output.mkdir(parents=True)
+            for i, body in enumerate(bodies):
+                (output / f'{i:02}.md').write_text('# Cron Job\n## Prompt\nInjected instructions\n## Response\n' + body)
+        self.app.poll()
+        state = self.app.state()
+        notes = [n for n in state['notifications'] if n.get('job_id') == 'owned' and not n['id'].startswith('created-')]
+        self.assertEqual(len(notes), 5)
+        self.assertTrue(all('Injected instructions' not in n['body'] for n in notes))
+        self.assertEqual(len([n for n in state['notifications'] if n.get('job_id') == 'unrelated']), 8)
+        with self.app.connect() as db:
+            self.assertEqual(db.execute("SELECT count(*) FROM seen WHERE key LIKE 'output:%'").fetchone()[0], 16)
+        job.update(last_status='error', last_run_at='new')
+        self.cron_store([job])
+        (self.home / 'cron' / 'output' / 'owned' / '99.md').write_text('## Response\n[SILENT]')
+        self.app.poll()
+        self.assertIn('[SILENT]', [n['body'] for n in self.app.state()['notifications']])
+
+    def test_owned_output_backfill_and_restart_dedupe(self):
+        self.managed_fixture()
+        self.app.custom()
+        key = 'output:owned:old.md'
+        raw = '# Cron Job\n## Prompt\n' + 'boilerplate ' * 4000 + '\n## Response\nUseful synthetic response'
+        output = self.home / 'cron' / 'output' / 'owned'
+        output.mkdir(parents=True)
+        (output / 'old.md').write_text(raw)
+        nid = backend.hashlib.sha256(key.encode()).hexdigest()
+        with self.app.connect() as db:
+            db.execute('INSERT INTO seen VALUES (?)', (key,))
+            self.app._notify(db, nid, 'Old result', raw[:32000], 'owned')
+        self.assertEqual(next(n for n in self.app.state()['notifications'] if n['id'] == nid)['body'], 'Useful synthetic response')
+        app2 = backend.Companion(self.home, hermes=self.hermes, profile='default')
+        try:
+            self.assertEqual(len([n for n in app2.state()['notifications'] if n['id'] == nid]), 1)
+        finally:
+            app2.close()
+
+    def test_optimized_schedule_continuity_boolean_and_readback(self):
+        payload = {'title': 'Review', 'prompt': 'Only new findings', 'schedule': 'every 2h', 'mode': 'cron', 'optimized': True}
+        def cli(args, **kwargs):
+            self.assertEqual(args[3], payload['prompt'])
+            self.assertEqual(args[-1], payload['title'])
+            self.assertIn('--continuity', args)
+            self.cron_store([{'id': 'fresh', 'name': args[-1], 'prompt': args[3], 'schedule_display': args[2],
+                              'enabled': True, 'deliver': 'local', 'context_from': ['self']}])
+            return 'Created job: fresh'
+        with patch.object(self.app, 'cli', side_effect=cli):
+            self.assertEqual(self.app.schedule(payload)['id'], 'fresh')
+        with patch.object(self.app, 'cli') as mocked:
+            for value in ('true', 1, None):
+                with self.assertRaises(ValueError):
+                    self.app.schedule({**payload, 'optimized': value})
+            mocked.assert_not_called()
+        self.managed_fixture()
+        jobs = self.app.jobs_raw()
+        jobs[0]['context_from'] = ['other-job']
+        self.cron_store(jobs)
+        def edit(args, **kwargs):
+            self.fake_custom_cli(args)
+            self.assertIn('--continuity', args)
+            jobs = self.app.jobs_raw()
+            jobs[0]['context_from'].append('self')
+            self.cron_store(jobs)
+            return 'Edited'
+        with patch.object(self.app, 'cli', side_effect=edit):
+            self.app.custom_edit({**payload, 'id': 'owned'})
+        self.assertEqual(self.app.jobs_raw()[0]['context_from'], ['other-job', 'self'])
+        with patch.object(self.app, 'cli', side_effect=self.fake_custom_cli):
+            jobs = self.app.jobs_raw()
+            jobs[0]['context_from'] = []
+            self.cron_store(jobs)
+            with self.assertRaisesRegex(RuntimeError, 'continuity'):
+                self.app.custom_edit({**payload, 'id': 'owned'})
+
+    def test_todo_crud_dates_and_validation(self):
+        payload = {'title': 'Send draft for review', 'details': 'Synthetic task', 'due_date': '2035-02-28',
+                   'reminder_at': '2035-02-28T09:00:00-08:00', 'timezone': 'America/Los_Angeles'}
+        status, _, body = self.http('POST', '/api/todo-save', payload)
+        self.assertEqual(status, 200)
+        todo = json.loads(body)['todo']
+        self.assertEqual(todo['reminder_at'], '2035-02-28T17:00:00+00:00')
+        self.assertEqual(json.loads(self.http(path='/api/todos')[2])['todos'], [todo])
+        self.assertEqual(self.app.todo_action({'id': todo['id'], 'action': 'complete'})['todo']['status'], 'completed')
+        self.assertEqual(self.app.todo_action({'id': todo['id'], 'action': 'reopen'})['todo']['status'], 'pending')
+        for changes in ({'due_date': '2035-02-29'}, {'due_date': '2035-2-28'}, {'timezone': 'Invalid/Zone'},
+                        {'reminder_at': '2035-02-28T09:00:00'}, {'reminder_at': '2000-01-01T00:00:00Z'},
+                        {'title': ''}, {'details': 'x' * 4001}):
+            self.assertEqual(self.http('POST', '/api/todo-save', {**payload, **changes})[0], 400)
+        self.app.todo_action({'id': todo['id'], 'action': 'delete'})
+        self.assertEqual(self.app.todos(), {'todos': []})
+        with self.assertRaises(LookupError):
+            self.app.todo_save({**payload, 'id': todo['id']})
+
+    def test_todo_due_once_catchup_restart_and_rearm(self):
+        payload = {'title': 'Review task', 'details': 'Review details', 'due_date': '2035-01-01',
+                   'reminder_at': '2035-01-01T10:00:00Z'}
+        todo = self.app.todo_save(payload)['todo']
+        later = '2035-01-01T11:00:00+00:00'
+        with patch.object(backend, 'now', return_value=later), patch.object(self.app, 'poll_messages', side_effect=OSError('no history')):
+            self.app.poll()
+        first = self.app.todos()['todos'][0]
+        self.assertEqual(first['reminded_at'], later)
+        notes = [n for n in self.app.state()['notifications'] if n['id'].startswith('todo-reminder-')]
+        self.assertEqual(len(notes), 1)
+        self.assertTrue(notes[0]['custom'])
+        self.assertEqual(self.app.todo_save({**payload, 'id': todo['id'], 'details': 'Edited'})['todo']['reminded_at'], later)
+        app2 = backend.Companion(self.home, hermes=self.hermes, profile='default')
+        try:
+            with patch.object(backend, 'now', return_value=later):
+                app2.poll()
+            self.assertEqual(len([n for n in app2.state()['notifications'] if n['id'].startswith('todo-reminder-')]), 1)
+        finally:
+            app2.close()
+        self.app.todo_save({**payload, 'id': todo['id'], 'reminder_at': '2035-01-02T10:00:00Z'})
+        self.assertIsNone(self.app.todos()['todos'][0]['reminded_at'])
+        with patch.object(backend, 'now', return_value='2035-01-03T00:00:00+00:00'):
+            self.app.poll_todos()
+        self.assertEqual(len([n for n in self.app.state()['notifications'] if n['id'].startswith('todo-reminder-')]), 2)
+        self.app.todo_action({'id': todo['id'], 'action': 'delete'})
+        self.assertEqual(len([n for n in self.app.state()['notifications'] if n['id'].startswith('todo-reminder-')]), 2)
+
+    def test_todo_complete_cancels_pending_reminder(self):
+        todo = self.app.todo_save({'title': 'Task', 'due_date': '2035-01-01', 'reminder_at': '2035-01-01T10:00:00Z'})['todo']
+        self.app.todo_action({'id': todo['id'], 'action': 'complete'})
+        with patch.object(backend, 'now', return_value='2035-01-02T10:00:00+00:00'):
+            self.app.poll_todos()
+        self.assertFalse(any(n['id'].startswith('todo-reminder-') for n in self.app.state()['notifications']))
+
+    def test_health_healthy_frequency_restart_and_no_notifications(self):
+        with patch.object(self.app, 'chat', return_value=('WOOF_HEALTH_OK', None)) as chat:
+            result = self.app.health_check(daily=True)
+            self.wait_request(result['id'])
+            self.assertEqual(self.app.health_check(daily=True), {'status': 'not-due'})
+            chat.assert_called_once()
+            self.assertTrue(chat.call_args.kwargs['analysis'])
+            state = self.app.state()
+            self.assertEqual(state['status']['health']['issues_count'], 0)
+            self.assertIsNotNone(state['status']['health']['checked_at'])
+            self.assertFalse(state['notifications'])
+        app2 = backend.Companion(self.home, hermes=self.hermes, profile='default')
+        try:
+            with patch.object(app2, 'chat') as chat:
+                self.assertEqual(app2.health_check(daily=True), {'status': 'not-due'})
+                chat.assert_not_called()
+        finally:
+            app2.close()
+
+    def test_health_busy_merge_actions_and_resolve(self):
+        job = self.managed_fixture(enabled=True)
+        job['last_status'] = 'error'
+        self.cron_store([job])
+        self.app.custom()
+        with self.app.connect() as db:
+            suggestions = {'proactive': [{'id': 'conversation', 'title': 'Follow up'}], 'ideas': []}
+            db.execute("INSERT OR REPLACE INTO meta VALUES ('suggestions',?)", (json.dumps(suggestions),))
+            db.execute("INSERT OR REPLACE INTO meta VALUES ('suggestions_method','model')")
+        entered, release = threading.Event(), threading.Event()
+        def probe(*args, **kwargs):
+            entered.set()
+            release.wait(3)
+            return 'WOOF_HEALTH_OK', None
+        with patch.object(self.app, 'chat', side_effect=probe) as chat, patch.object(self.app, 'request') as request:
+            result = self.app.health_check()
+            self.assertTrue(entered.wait(2))
+            self.assertEqual(self.app.health_check(), {'status': 'running'})
+            release.set()
+            self.wait_request(result['id'])
+            request.assert_not_called()
+            chat.assert_called_once()
+        state = self.app.state()
+        self.assertIn('conversation', [c['id'] for c in state['proactive']])
+        cards = [c for c in state['proactive'] if c.get('source') == 'agent-health']
+        self.assertEqual(len(cards), 2)
+        with patch.object(self.app, 'request', return_value={'id': 'queued-repair', 'status': 'queued'}) as request:
+            result = self.app.health_action({'id': cards[0]['id']})
+            self.assertEqual(result['id'], 'queued-repair')
+            self.assertIn('minimally scoped', request.call_args.args[0]['prompt'])
+            self.assertIn('verify', request.call_args.args[0]['prompt'])
+        with self.assertRaises(LookupError):
+            self.app.health_action({'id': 'unknown'})
+        self.cron_store([])
+        with patch.object(self.app, 'chat', return_value=('WOOF_HEALTH_OK', None)):
+            self.wait_request(self.app.health_check()['id'])
+        with self.assertRaises(LookupError):
+            self.app.health_action({'id': cards[0]['id']})
+        self.assertIn('conversation', [c['id'] for c in self.app.state()['proactive']])
+
+    def test_health_unavailable_provider_and_cli_manual_remediation(self):
+        with patch.object(self.app, 'chat', side_effect=RuntimeError('private token must not leak')):
+            self.wait_request(self.app.health_check()['id'])
+        card = next(c for c in self.app.state()['proactive'] if c.get('source') == 'agent-health')
+        self.assertEqual(card['action']['kind'], 'settings')
+        self.assertNotIn('private token', json.dumps(card))
+        with self.assertRaises(ValueError):
+            self.app.health_action({'id': card['id']})
+        self.hermes.unlink()
+        with patch.object(self.app, 'chat') as chat:
+            self.wait_request(self.app.health_check()['id'])
+            chat.assert_not_called()
+        card = next(c for c in self.app.state()['proactive'] if c.get('source') == 'agent-health')
+        self.assertEqual(card['id'], 'health-cli')
+        self.assertEqual(card['action']['kind'], 'settings')
+        self.assertIn('bridge host', card['prompt'])
+
+    def test_todo_unchanged_past_reminder_preserves_emission(self):
+        payload = {'title': 'Review', 'due_date': '2035-01-01', 'reminder_at': '2035-01-01T10:00:00Z'}
+        todo = self.app.todo_save(payload)['todo']
+        later = backend.datetime.fromisoformat('2035-01-02T10:00:00+00:00')
+        with patch.object(backend, 'now', return_value=later.isoformat()):
+            self.app.poll_todos()
+        with patch.object(backend, 'datetime', wraps=backend.datetime) as clock:
+            clock.now.return_value = later
+            same = self.app.todo_save({**payload, 'id': todo['id'], 'title': 'New title'})['todo']
+            self.assertEqual(same['reminded_at'], later.isoformat())
+            with self.assertRaises(ValueError):
+                self.app.todo_save({**payload, 'id': todo['id'], 'reminder_at': '2035-01-01T11:00:00Z'})
+
+    def test_health_daily_interval_and_failed_action_observations(self):
+        self.managed_fixture(enabled=False)
+        self.app.custom()
+        jobs = self.app.jobs_raw()
+        jobs.append(dict(jobs[0], id='unrelated', last_status='error'))
+        self.cron_store(jobs)
+        with self.app.connect() as db:
+            db.execute('INSERT INTO requests VALUES (?,?,?,?,?)', ('old-failed', 'Synthetic action', 'error', 'private details', backend.now()))
+        with patch.object(self.app, 'chat', return_value=('WOOF_HEALTH_OK', None)):
+            self.wait_request(self.app.health_check(daily=True)['id'])
+            with self.app.connect() as db:
+                started = float(db.execute("SELECT value FROM meta WHERE key='health_started_at'").fetchone()[0])
+            with patch.object(backend.time, 'time', return_value=started + 86399):
+                self.assertEqual(self.app.health_check(daily=True)['status'], 'not-due')
+            with patch.object(backend.time, 'time', return_value=started + 86401):
+                self.wait_request(self.app.health_check(daily=True)['id'])
+        cards = [c for c in self.app.state()['proactive'] if c.get('source') == 'agent-health']
+        self.assertEqual([c['id'] for c in cards], ['health-requests'])
+        self.assertIn('historical', cards[0]['body'])
+        self.assertNotIn('private details', json.dumps(cards))
+
+    def test_health_action_queues_ordinary_chat_only_after_click(self):
+        self.managed_fixture(enabled=True)
+        with patch.object(self.app, 'chat', return_value=('WOOF_HEALTH_OK', None)) as chat:
+            self.wait_request(self.app.health_check()['id'])
+            self.assertEqual(chat.call_count, 1)
+            hid = next(c['id'] for c in self.app.state()['proactive'] if c.get('source') == 'agent-health')
+        with patch.object(self.app, 'chat', return_value=('Repair request outcome', 'repair-session')) as chat:
+            status, _, body = self.http('POST', '/api/health-action', {'id': hid})
+            self.assertEqual(status, 202)
+            self.wait_request(json.loads(body)['id'])
+            chat.assert_called_once()
+            self.assertFalse(chat.call_args.kwargs.get('analysis', False))
+            self.assertIn('normal Hermes approvals', chat.call_args.args[0])
+
     def test_context_cleaner_excludes_runtime_and_skill_preamble(self):
         self.assertEqual(backend.conversation_text('[ASYNC DELEGATION BATCH COMPLETE — test] runtime message'), '')
         self.assertEqual(backend.conversation_text('[INTERNAL NOTIFICATION — generated by the Hermes gateway] status'), '')

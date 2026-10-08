@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('nudge',{
  onSettings:fn=>ipcRenderer.on('show-settings',()=>fn()),
  onVisibility:fn=>ipcRenderer.on('panel-visibility',(_e,visible)=>fn(visible)),
  api:(route,data)=>ipcRenderer.invoke('bridge-api',route,data),
+ openLink:url=>ipcRenderer.invoke('open-link',url),
  getConnection:()=>ipcRenderer.invoke('connection-get'),
  previewSound:sound=>ipcRenderer.invoke('sound-preview',sound),
  onNotification:fn=>ipcRenderer.on('notification-arrived',(_e,event)=>fn(event)),

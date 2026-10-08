@@ -48,6 +48,14 @@ Automatic deterministic extraction is explicitly a suggested/unverified fallback
 
 Proactive focuses on possible open loops; Ideas proposes concrete assistance. Model-backed cards survive unrelated polling and newer history until another explicit refresh replaces them. Clicking a suggestion sends a new request; provenance is context, not an automatic continuation of an old session.
 
+## Actionable workflows
+
+Notification optimization is a tools-disabled model call returning a validated reviewable draft; no schedule is created until an explicit save. The bridge retains ownership boundaries for existing-job samples and mutations. Cron output ingestion extracts the actual response and handles owned quiet/no-change signals without displaying injected scheduling prompts.
+
+A separate SQLite to-do store owns dates, completion state and reminder checkpoints. Due reminders are ordinary stable-ID notifications, emitted atomically once; they use existing client preferences and audio, not a new sound subsystem or model-powered cron job.
+
+Daily read-only agent-health findings are persisted separately and merged into Proactive without replacing conversation suggestions. A durable check timestamp controls daily cadence. Remediation is a validated issue-linked request triggered only by the user; this is not an autonomous self-repair daemon.
+
 ## Persistence boundaries
 
 - Hermes history: read-only source.

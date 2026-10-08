@@ -1,4 +1,4 @@
-const API_METHODS={state:'GET',info:'GET',custom:'GET','custom-edit':'POST','custom-delete':'POST',schedule:'POST',request:'POST',refresh:'POST',notification:'POST',job:'POST'};
+const API_METHODS={state:'GET',info:'GET',custom:'GET',todos:'GET',optimize:'POST','todo-save':'POST','todo-action':'POST','health-check':'POST','health-action':'POST','custom-edit':'POST','custom-delete':'POST',schedule:'POST',request:'POST',refresh:'POST',notification:'POST',job:'POST'};
 function validateConnection(input){
  if(!input||typeof input.serverUrl!=='string')throw Error('Enter the Hermes server URL.');
  const raw=input.serverUrl.trim();let u;try{u=new URL(raw);}catch{throw Error('Use a complete URL such as https://hermes.example.com or http://127.0.0.1:47831.');}
@@ -36,4 +36,5 @@ async function testConnection(connection){
  if(!state.status||!Array.isArray(state.notifications)||!Array.isArray(state.jobs))throw Error('The bridge returned an invalid state.');
  return {profile:info.profile||state.status.profile,hermesAvailable:!!state.status.hermes_available};
 }
-module.exports={validateConnection,candidateConnection,fetchBridge,testConnection,API_METHODS};
+function validateExternalLink(value){if(typeof value!=='string'||value.length>8192||/[\s\\]/.test(value))throw Error('Only public HTTPS links can be opened.');let u;try{u=new URL(value);}catch{throw Error('Invalid link.');}const h=u.hostname.toLowerCase().replace(/\.$/,'');if(u.protocol!=='https:'||u.username||u.password||!h||!h.includes('.')||h.endsWith('.localhost')||h.endsWith('.local')||h.endsWith('.internal')||h.endsWith('.test')||/^\d+(?:\.\d+){3}$/.test(h)||h.includes(':'))throw Error('Only public HTTPS links without credentials can be opened.');return u.href;}
+module.exports={validateConnection,candidateConnection,fetchBridge,testConnection,API_METHODS,validateExternalLink};

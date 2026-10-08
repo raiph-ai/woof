@@ -26,6 +26,8 @@ The recent-state cache is connection-scoped and memory-only. Source filtering is
 
 Hermes history is opened read-only. Explicit reflection sends bounded context to the configured model provider and may incur that provider's normal cost. Startup fallback extraction stays local. No analysis runs with tools, and suggestions never execute without a click.
 
+Notification optimization and health probes run with tools disabled and may incur configured model-provider costs. Optimized drafts need a reviewed save before scheduling. Due to-do reminders use bridge-local state and no model calls. Daily health findings do not execute fixes; repair clicks authorize normal Hermes requests, and unavailable credentials require explicit recovery rather than approval bypass. External notification links open only validated HTTPS destinations after a user click, never local files or script URLs.
+
 Requests use normal Hermes approvals. Noninteractive runs can fail when approval/device interaction is needed. The bridge does not use shell-interpolated prompts or automatic approval bypass flags. Errors are reported instead of fabricating outcomes.
 
 ## Recovery and rotation

@@ -1,7 +1,7 @@
-const {app,BrowserWindow,ipcMain,screen,Menu,safeStorage,clipboard}=require('electron');
+const {app,BrowserWindow,ipcMain,screen,Menu,safeStorage,clipboard,shell}=require('electron');
 const fs=require('node:fs'),path=require('node:path');
 const {clampPoint,panelPosition}=require('./shell-utils.cjs');
-const {validateConnection,candidateConnection,fetchBridge,testConnection}=require('./client-core.cjs');
+const {validateConnection,candidateConnection,fetchBridge,testConnection,API_METHODS,validateExternalLink}=require('./client-core.cjs');
 const {filterNotifications,notificationKind}=require('./web/notification-rules.js');
 app.setName('Hermes Nudge');
 const legacyUserData=app.getPath('userData');app.setName('Woof');app.setPath('userData',legacyUserData);
@@ -36,6 +36,7 @@ function publicConfig(){return {configured:!!connection,serverUrl:connection?.se
 function trusted(e){return e.sender===panel?.webContents&&e.senderFrame===panel.webContents.mainFrame;}
 function wireInvoke(channel,handler){ipcMain.handle(channel,async(e,...args)=>{if(!trusted(e))return {error:'Untrusted caller'};try{return await handler(...args);}catch(err){return {error:String(err.message||'Operation failed')}};});}
 wireInvoke('connection-get',()=>publicConfig());
+wireInvoke('open-link',async value=>{const url=validateExternalLink(value);if(connection&&new URL(url).hostname===new URL(connection.serverUrl).hostname)throw Error('Bridge-local links cannot be opened.');await shell.openExternal(url);return {ok:true};});
 wireInvoke('notifications-set',input=>{for(const key of ['watchdog','heartbeat','cron'])if(typeof input?.[key]!=='boolean')throw Error('Invalid notification preference.');if(!['woof','howl','none'].includes(input.sound))throw Error('Invalid notification sound.');const sourceEnabledAt={...notificationSettings.sourceEnabledAt};for(const key of ['watchdog','heartbeat','cron'])if(input[key]&&!notificationSettings[key])sourceEnabledAt[key]=Date.now();notificationSettings={...notificationSettings,sourceEnabledAt,watchdog:input.watchdog,heartbeat:input.heartbeat,cron:input.cron,sound:input.sound};if(input.sound==='none')mascot?.webContents.send('sound-preview',{sound:'none'});saveNotificationSettings();refreshBackgroundBadge();return notificationSettings;});
 wireInvoke('sound-preview',sound=>{if(!['woof','howl','none'].includes(sound))throw Error('Invalid notification sound.');mascot?.webContents.send('sound-preview',{sound});return {ok:true};});
 wireInvoke('token-copy',async value=>{
@@ -58,7 +59,7 @@ wireInvoke('connection-save',async input=>{
 wireInvoke('connection-test',async input=>testConnection(candidateConnection(input,connection)));
 wireInvoke('connection-forget',()=>{if(fs.existsSync(configPath()))fs.unlinkSync(configPath());connection=null;latestState=null;stateOwner=null;configError='';return publicConfig();});
 async function fetchState(){const owner=connection;if(stateFlight?.owner===owner)return stateFlight.promise;const promise=fetchBridge(owner,'state',undefined,{timeout:10000}).then(result=>{if(connection!==owner)throw Error('Connection changed.');latestState=result;stateOwner=owner;latestStateAt=Date.now();observeNotifications(filterNotifications(result.notifications,notificationSettings));return result;}).finally(()=>{if(stateFlight?.promise===promise)stateFlight=null;});stateFlight={owner,promise};return promise;}
-wireInvoke('bridge-api',async(route,data)=>{if(!connection)throw Error('Connect to your Hermes server in Settings.');if(route==='state'){let result;if(cachedOnOpen&&stateOwner===connection&&Date.now()-latestStateAt<70000)result=latestState;cachedOnOpen=false;result=result||await fetchState();return {...result,notifications:filterNotifications(result.notifications,notificationSettings)};}const result=await fetchBridge(connection,route,data);if(data!==undefined){latestState=null;stateOwner=null;}return result;});
+wireInvoke('bridge-api',async(route,data)=>{if(!connection)throw Error('Connect to your Hermes server in Settings.');if(route==='state'){let result;if(cachedOnOpen&&stateOwner===connection&&Date.now()-latestStateAt<70000)result=latestState;cachedOnOpen=false;result=result||await fetchState();return {...result,notifications:filterNotifications(result.notifications,notificationSettings)};}const owner=connection;const result=await fetchBridge(owner,route,data);if(connection!==owner)throw Error('Connection changed. This result was discarded; a submitted mutation may already have been applied on the previous server. Check there before retrying.');if(API_METHODS[route]==='POST'){latestState=null;stateOwner=null;}return result;});
 if(!app.requestSingleInstanceLock())app.quit();else{
  app.on('second-instance',()=>{mascot?.show();if(panel)showPanel();});
  app.whenReady().then(async()=>{

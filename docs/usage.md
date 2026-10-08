@@ -34,6 +34,24 @@ Watchdog, heartbeat-style, and unrelated executed-cron results have independent 
 
 Hidden sources do not inflate the badge or play alerts. Enabling a source reveals qualifying old cards quietly rather than sounding for all of them; subsequent newly arriving events can alert normally.
 
+## Agent-optimized notifications
+
+Choose Notification in Add item. Woof asks the configured agent, with tools disabled, to turn your request into precise monitoring instructions: what to look for, why it matters, what constitutes a change worth alerting about, and the useful next action. Review the draft before saving the actual schedule. Reviewed optimized schedules use the task’s own prior-run continuity to distinguish new/meaningfully changed findings from repeats; existing jobs are not silently rewritten during upgrade. The agent does not create the job or execute the instructions during optimization. Provider errors are real errors, not fabricated optimization; any unoptimized save is explicitly labeled. Existing notifications can be optimized from their editor.
+
+Useful email alerts focus on a specific message, urgency/deadline, a verified message link when available, and a proposed next action—not routine inbox counts or repeated unchanged findings. No email is sent/deleted and no new account access is granted by optimization. Owned cron-output cards show the actual response rather than the schedule/system-prompt wrapper. HTTPS email links are clickable and open in your browser after a user click; unsafe URL schemes are not executable. Quiet/no-change control responses do not become notifications.
+
+## To-dos
+
+Choose To-do in Add item. Enter a title, details, due date, and optionally a reminder date/time. Reminder time uses your desktop timezone and is sent as an explicit timezone-aware timestamp; the due date is a calendar day. Manage To-dos in Settings to edit, complete, reopen, or delete items. Completing/deleting cancels future reminders and preserves notification history.
+
+To-dos are stored on the bridge, not executed by Hermes or turned into model-powered cron jobs. A reminder is emitted once when due, survives bridge restart, and uses the currently selected Wolf bark/Little howl/None setting through the normal notification pipeline. Missed reminders catch up when the bridge resumes. Woof must be running/connected to play sound; idle background delivery is polled, not instantaneous.
+
+## Daily agent health
+
+Proactive shows the last health-check status and problems discovered by a daily read-only check of the connected agent. Checks inspect CLI/scheduler availability and relevant failed tasks; a small tools-disabled provider probe tests model connectivity. Healthy checks do not invent issue cards. The bridge must be running; the durable daily checkpoint prevents repeated startup checks, with catch-up after downtime. A manual Check agent action is also available.
+
+Issue cards explain the observed problem and proposed remedy. Clicking a repair action shows the request for review and then authorizes a normal Hermes task; ordinary approval rules still apply. Daily checks never automatically perform repairs. A credential/connectivity failure may instead point to Settings/manual recovery because an unavailable agent cannot repair itself through a model call. Results of approved repair requests appear in Notifications.
+
 ## Sound
 
 - **Wolf bark:** the uploaded recording, decoded from MP3 to a compact 24 kHz mono WAV. Notifications and Preview use this same file, not the old synthesized default.

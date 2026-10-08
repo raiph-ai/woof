@@ -47,6 +47,12 @@ Woof does not start Hermes scheduling. Check the scheduler/gateway serving the s
 
 Open Settings → Manage custom notifications to confirm the saved task, active/paused status, last result status and next run. Builds before 0.3.8 treated these results like generic cron output, hidden by default. Update both client and bridge to 0.3.8: Woof-created results are eligible without enabling unrelated cron traffic. The existing first-launch cutoff and desktop dismissal still apply; a new client does not backfill older results. Creation does not run a repeating task immediately, and an active existing Hermes scheduler remains required.
 
+## Optimization, to-do reminders and health checks
+
+Optimization needs working model-provider authorization. Retry after recovering the provider; do not interpret an error as an optimized result. Review the alert criteria to avoid repeated routine reports. A to-do reminder needs an active bridge and connected desktop; None disables audio, and idle desktop polling can delay the sound. Completing/deleting a to-do cancels pending reminders.
+
+Daily health checks identify only what the bridge can observe about the selected agent. A failure card offers a user-approved repair request or Settings/manual recovery when the agent is unavailable. A clicked request is not proof the repair succeeded; check its returned result and subsequent health status.
+
 ## Closable connection errors
 
 Error and information banners have an × button; Escape closes the main error when no dialog is open. Dismissed identical connection errors do not reappear on every poll. A successful state read clears a connection-failure banner. A new explicit action may surface a new error. Ordinary GET reads retry once after a brief transient transport failure; POST actions never auto-replay because they may already have been accepted. History-reflection submission has a bounded 10-second acknowledgement timeout and visible progress; real offline bridges still require connection recovery.

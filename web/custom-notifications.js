@@ -5,7 +5,7 @@ let customEntries=[],customBusy=false,customReturnSettings=false;
 function customStatus(text,error=false){const el=customEl('custom-status');el.textContent=text;el.className=error?'error':'hint';}
 function customNode(tag,text,cls){const el=document.createElement(tag);if(text!==undefined)el.textContent=text;if(cls)el.className=cls;return el;}
 function customDate(value){return value?new Date(value).toLocaleString():'—';}
-function customButtonsDisabled(){for(const b of customDialog.querySelectorAll('button:not(#custom-close)'))b.disabled=customBusy;}
+function customButtonsDisabled(){for(const b of customDialog.querySelectorAll('button:not(#custom-close),#custom-edit-form input,#custom-edit-form textarea,#custom-edit-form select'))b.disabled=customBusy;}
 function renderCustom(){
  const list=customEl('custom-list');list.replaceChildren();
  if(!customEntries.length)list.append(customNode('p','No custom notifications saved. Use “Schedule a nudge” to create one.','empty'));
@@ -32,7 +32,8 @@ async function openCustom(){
 }
 function editCustom(entry){
  if(customBusy)return;
- customEl('custom-id').value=entry.id;customEl('custom-title').value=entry.title.replace(/^\[heartbeat-style\]\s*/,'');customEl('custom-prompt').value=(entry.prompt||'').replace(/^(?:Heartbeat-style interval check \(implemented as Hermes cron\):\n)+/,'');customEl('custom-mode').value=entry.mode||'cron';customEl('custom-schedule').value=entry.schedule||'';
+
+ customReviewed=null;customEl('custom-id').value=entry.id;customEl('custom-title').value=entry.title.replace(/^\[heartbeat-style\]\s*/,'');customEl('custom-prompt').value=(entry.prompt||'').replace(/^(?:Heartbeat-style interval check \(implemented as Hermes cron\):\n)+/,'');customEl('custom-mode').value=entry.mode||'cron';customEl('custom-schedule').value=entry.schedule||'';
  customEl('custom-edit-form').hidden=false;customEl('custom-list').hidden=true;customEl('custom-reload').hidden=true;customStatus('Changes affect future runs. Active/paused state is preserved.');customEl('custom-title').focus();
 }
 function cancelCustomEdit(){if(customBusy)return;customEl('custom-edit-form').hidden=true;customEl('custom-list').hidden=false;customEl('custom-reload').hidden=false;customStatus('Schedules are saved on your Hermes server.');}
@@ -50,8 +51,8 @@ async function changeCustom(entry,action){
 }
 customEl('custom-edit-form').addEventListener('submit',async event=>{
  event.preventDefault();if(customBusy)return;
- const data={id:customEl('custom-id').value,title:customEl('custom-title').value.trim(),prompt:customEl('custom-prompt').value.trim(),schedule:customEl('custom-schedule').value.trim(),mode:customEl('custom-mode').value};
- customBusy=true;customButtonsDisabled();customStatus('Saving changes…');
+ const data={id:customEl('custom-id').value,title:customEl('custom-title').value.trim(),prompt:customEl('custom-prompt').value.trim(),schedule:customEl('custom-schedule').value,mode:customEl('custom-mode').value};
+ data.optimized=customReviewed===customSnapshot();customBusy=true;customButtonsDisabled();customStatus('Saving changes…');
  try{await api('custom-edit',data);await loadCustom();customEl('custom-edit-form').hidden=true;customEl('custom-list').hidden=false;customEl('custom-reload').hidden=false;customStatus('Changes saved and verified on your Hermes server.');rendering='';await load();}catch(e){customStatus(e.message,true);}finally{customBusy=false;customButtonsDisabled();}
 });
 customEl('manage-custom').addEventListener('click',openCustom);

@@ -40,6 +40,7 @@ node test-mascot-alerts.cjs
 node test-fast-open.cjs
 node test-reflection-errors.cjs
 node test-custom-notifications.cjs
+node test-workflows.cjs
 node test-layout.cjs
 node test-glass.cjs
 node test-panels.cjs
@@ -70,7 +71,7 @@ The package command trims the generated English-only client. Build/test/source f
 ## Release gate
 
 1. Bump package version and lockfile; update version references.
-2. Run portable tests and relevant native regressions.
+2. Run portable tests and relevant native regressions, including optimization review/error behavior, durable to-do reminders, and health-check action approval. Exercise model-backed optimization and read-only health checks against the real selected profile before claiming they work.
 3. Package, trim, and sign after the final source change.
 4. Test the signed executable, including actual playing/ended events, matching source audio, badge/animation, cutoff/dedupe, and cold reopen against slow HTTP.
 5. Create/mount the DMG, verify strict signature and expected bundled files/version.
