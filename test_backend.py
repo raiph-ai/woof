@@ -78,6 +78,254 @@ class BackendTests(unittest.TestCase):
             db.executemany('INSERT INTO messages VALUES (?,?,?,?,?,?)', rows)
         return path
 
+    def fresh_history_fixture(self):
+        path = self.history_fixture()
+        with sqlite3.connect(path, factory=backend.ClosingConnection) as db:
+            db.execute('UPDATE messages SET timestamp=timestamp+?', (time.time() - 10,))
+        return path
+
+    def test_coaching_settings_contract_auth_validation_and_no_call(self):
+        self.assertEqual(self.http(path='/api/coaching-settings', auth=False)[0], 401)
+        self.assertEqual(self.http('POST', '/api/coaching-settings', {}, auth=False)[0], 401)
+        defaults = json.loads(self.http(path='/api/coaching-settings')[2])
+        self.assertEqual(set(defaults), {'interval_minutes', 'timezone', 'last_checked_at', 'next_check_at', 'busy', 'last_error'})
+        self.assertEqual(defaults['interval_minutes'], 120)
+        self.assertEqual(defaults['timezone'], 'UTC')
+        self.assertIsNone(defaults['last_checked_at'])
+        with patch.object(self.app, 'chat') as chat:
+            for value in (14, 125, 1441, True, 120.0, '120', None):
+                self.assertEqual(self.http('POST', '/api/coaching-settings', {'interval_minutes': value})[0], 400)
+            for tz in ('Bad/Zone', '', None, 12):
+                self.assertEqual(self.http('POST', '/api/coaching-settings', {'interval_minutes': 15, 'timezone': tz})[0], 400)
+            for minutes in (15, 1440):
+                code, _, body = self.http('POST', '/api/coaching-settings', {'interval_minutes': minutes, 'timezone': 'America/Los_Angeles'})
+                self.assertEqual(code, 200)
+                saved = json.loads(body)
+                self.assertEqual(saved, json.loads(self.http(path='/api/coaching-settings')[2]))
+                self.assertEqual(saved['interval_minutes'], minutes)
+            self.assertEqual(self.app.coaching_save({'interval_minutes': 120})['timezone'], 'America/Los_Angeles')
+            chat.assert_not_called()
+        self.assertEqual(self.app.state()['status']['coaching'], self.app.coaching_settings())
+
+    def test_coaching_cadence_restart_interval_recalculation_and_quiet(self):
+        with self.app.connect() as db:
+            anchor = float(db.execute("SELECT value FROM meta WHERE key='coaching_anchor'").fetchone()[0])
+        with patch.object(backend.time, 'time', return_value=anchor + 7199):
+            self.assertEqual(self.app.refresh(automatic=True), {'status': 'not-due'})
+        with patch.object(backend.time, 'time', return_value=anchor + 7200), patch.object(self.app, 'chat') as chat:
+            request = self.app.refresh(automatic=True)
+            outcome = self.wait_request(request['id'])
+            self.assertEqual(outcome['status'], 'completed')
+            self.assertIn('Quiet window', outcome['body'])
+            self.assertEqual(self.app.refresh(automatic=True), {'status': 'not-due'})
+            chat.assert_not_called()
+        with self.app.connect() as db:
+            attempt = float(db.execute("SELECT value FROM meta WHERE key='coaching_attempt'").fetchone()[0])
+        settings = self.app.coaching_save({'interval_minutes': 15})
+        self.assertAlmostEqual(backend.datetime.fromisoformat(settings['next_check_at']).timestamp(), attempt + 900, places=5)
+        app2 = backend.Companion(self.home, hermes=self.hermes, profile='default')
+        try:
+            self.assertEqual(app2.coaching_settings(), settings)
+            with patch.object(backend.time, 'time', return_value=attempt + 899):
+                self.assertEqual(app2.refresh(automatic=True)['status'], 'not-due')
+            with patch.object(backend.time, 'time', return_value=attempt + 900), patch.object(app2, 'chat') as chat:
+                rid = app2.refresh(automatic=True)['id']
+                app2.pool.shutdown(wait=True)
+                self.assertEqual(app2.state()['requests'][0]['id'], rid)
+                chat.assert_not_called()
+            self.assertEqual(app2.state()['notifications'], [])
+        finally:
+            app2.close()
+
+    def test_coaching_busy_immediate_manual_and_slots_failure_checkpoint(self):
+        self.fresh_history_fixture()
+        entered, release = threading.Event(), threading.Event()
+        def reflect(*args, **kwargs):
+            entered.set()
+            release.wait(3)
+            return '{"proactive":[],"ideas":[]}', None
+        with patch.object(self.app, 'chat', side_effect=reflect) as chat:
+            status, _, body = self.http('POST', '/api/refresh', {})
+            self.assertEqual(status, 202)
+            self.assertTrue(entered.wait(2))
+            self.assertEqual(self.app.refresh(), {'status': 'running'})
+            state = self.app.state()
+            self.assertTrue(state['status']['analysis_busy'])
+            self.assertTrue(state['status']['coaching']['busy'])
+            release.set()
+            self.wait_request(json.loads(body)['id'])
+            chat.assert_called_once()
+        for _ in range(3):
+            self.assertTrue(self.app.slots.acquire(False))
+        try:
+            with self.assertRaisesRegex(ValueError, 'busy'):
+                self.app.refresh()
+            self.assertFalse(self.app.analysis_busy)
+            self.assertIsNotNone(self.app.coaching_settings()['last_error'])
+            self.assertEqual(self.app.refresh(automatic=True)['status'], 'not-due')
+        finally:
+            for _ in range(3):
+                self.app.slots.release()
+
+    def test_coaching_recent_overnight_bounded_sources_and_noise_before_limit(self):
+        path = self.history_fixture()
+        end = backend.datetime.fromisoformat('2030-02-02T17:00:00+00:00').timestamp()
+        self.app.coaching_save({'interval_minutes': 120, 'timezone': 'America/Los_Angeles'})
+        with sqlite3.connect(path, factory=backend.ClosingConnection) as db:
+            db.execute('UPDATE messages SET timestamp=?', (end - 37 * 3600,))
+            db.execute('UPDATE messages SET timestamp=? WHERE id IN (1,2)', (end - 12 * 3600,))
+            db.execute('UPDATE messages SET timestamp=? WHERE id=2', (end - 3600,))
+            for mid in range(10, 70):
+                db.execute('INSERT INTO messages VALUES (?,?,?,?,?,?)', (mid, 'real', 'user', 'Context ' * 200, end - mid, 1))
+            db.execute('INSERT INTO messages VALUES (?,?,?,?,?,?)', (100, 'real', 'user', 'Future', end + 1, 1))
+        self.managed_fixture()
+        todo = self.app.todo_save({'title': 'Project experiment', 'details': 'x' * 4000, 'due_date': '2035-01-01'})['todo']
+        self.assertEqual(self.app.state()['todos'], [todo])
+        with patch.object(backend, 'now', return_value=backend.datetime.fromtimestamp(end - 3600, backend.timezone.utc).isoformat()):
+            with self.app.connect() as db:
+                for nid, jid in [('normal-result', None), ('owned-result', 'owned'), ('todo-note', todo['id']), ('foreign', 'other')]:
+                    self.app._notify(db, nid, 'Meaningful result', 'Synthetic meaningful result', jid)
+                self.app._notify(db, 'interval-result', '[heartbeat-style] Project check', 'Useful finding', 'owned')
+                for i in range(30):
+                    self.app._notify(db, 'noise-' + str(i), 'Global watchdog heartbeat', 'Nothing changed')
+        with patch.object(backend.time, 'time', return_value=end):
+            context = self.app.coach_context()
+        self.assertEqual({n['id'] for n in context['notifications']}, {'normal-result', 'owned-result', 'todo-note', 'interval-result'})
+        self.assertIn(1, [h['message_id'] for h in context['history']])
+        self.assertLessEqual(len(json.dumps(context)), 24000)
+        self.assertLessEqual(len(context['history']), 24)
+        self.assertEqual(context['previous_evening'], '2030-02-01T18:00:00-08:00')
+        self.assertNotIn(100, [h['message_id'] for h in context['history']])
+        # Sparse history still includes the previous night, never stale anchors.
+        with sqlite3.connect(path, factory=backend.ClosingConnection) as db:
+            db.execute('DELETE FROM messages WHERE id>=10')
+        before = path.read_bytes()
+        with patch.object(backend.time, 'time', return_value=end):
+            context = self.app.coach_context()
+        self.assertEqual([h['message_id'] for h in context['history']], [1])
+        self.assertEqual(context['history'][0]['assistant_reply']['message_id'], 2)
+        self.assertEqual(context['history'][0]['assistant_reply']['timestamp'], end - 3600)
+        self.assertEqual(path.read_bytes(), before)
+
+    def test_coaching_exact_multisource_provenance_and_no_repair(self):
+        self.fresh_history_fixture()
+        todo = self.app.todo_save({'title': 'Project research', 'due_date': '2035-01-01'})['todo']
+        with self.app.connect() as db:
+            self.app._notify(db, 'ordinary', 'Project result', 'Synthetic finding')
+        refs = [{'kind': 'conversation', 'session_id': 'real', 'message_id': 2},
+                {'kind': 'notification', 'id': 'ordinary'}, {'kind': 'todo', 'id': todo['id']}]
+        card = {'title': 'Compare exploratory angles', 'body': 'Possibility, not an obligation',
+                'prompt': 'Research options with normal approvals', 'provenance': refs}
+        generated = {'proactive': [], 'ideas': [card]}
+        with patch.object(self.app, 'chat', return_value=(json.dumps(generated), None)) as chat, patch.object(self.app, 'request') as request:
+            self.wait_request(self.app.refresh()['id'])
+            self.assertTrue(chat.call_args.kwargs['analysis'])
+            request.assert_not_called()
+        saved = self.app.state()['ideas']
+        self.assertIn('notification=ordinary', saved[0]['source'])
+        self.assertIn('todo=' + todo['id'], saved[0]['source'])
+        context = self.app.coach_context()
+        for ref in ({'kind': 'conversation', 'session_id': 'wrong', 'message_id': 2},
+                    {'kind': 'notification', 'id': todo['id']}, {'kind': 'todo', 'id': 'ordinary'},
+                    {'kind': 'todo', 'id': 'invented'}, {'kind': 'tool', 'id': 'ordinary'}):
+            with self.assertRaises(ValueError):
+                backend.Companion.validate_coaching({'proactive': [{**card, 'provenance': [ref]}], 'ideas': []}, context)
+        with patch.object(self.app, 'chat', side_effect=RuntimeError('private provider error')):
+            outcome = self.wait_request(self.app.refresh()['id'])
+        self.assertEqual(outcome['status'], 'error')
+        self.assertEqual(self.app.state()['ideas'], saved)
+        self.assertNotIn('private provider error', self.app.coaching_settings()['last_error'])
+        self.assertEqual([n['id'] for n in self.app.state()['notifications']], ['ordinary'])
+        app2 = backend.Companion(self.home, hermes=self.hermes, profile='default')
+        try:
+            self.assertEqual(app2.state()['ideas'], saved)
+            self.assertIsNotNone(app2.coaching_settings()['last_error'])
+        finally:
+            app2.close()
+
+    def test_coaching_budget_is_bounded_without_changing_other_analysis(self):
+        for prompt, budget, timeout in [('Read-only individual coaching reflection. DATA:{}', '120', 150),
+                                        ('Read-only probe', '60', 90)]:
+            with patch.object(self.app, 'cli', side_effect=RuntimeError('controlled budget probe')) as cli:
+                with self.assertRaises(RuntimeError):
+                    self.app.chat(prompt, analysis=True)
+                args, _, actual_timeout = cli.call_args.args
+                self.assertEqual(args[args.index('--run-budget') + 1], budget)
+                self.assertEqual(actual_timeout, timeout)
+                self.assertEqual(args[args.index('-t') + 1], 'none')
+                self.assertNotIn('--yolo', args)
+                if budget == '120':
+                    self.assertEqual(args[args.index('--reasoning') + 1], 'low')
+                else:
+                    self.assertNotIn('--reasoning', args)
+
+    def test_coaching_real_subprocess_tools_disabled_adapter(self):
+        import sys
+        if os.name == 'nt':
+            self.skipTest('Executable script fixture uses a POSIX shebang')
+        self.hermes.write_text('#!' + sys.executable + '\nimport json,sys\n'
+                              'a=sys.argv\nassert a[a.index("-t")+1]=="none"\n'
+                              'assert "--ignore-rules" in a\nassert "--yolo" not in a\n'
+                              'assert a[a.index("--max-turns")+1]=="1"\n'
+                              'assert sys.stdin.read()=="Read-only probe"\n'
+                              'print(json.dumps({"type":"result","text":"OK","exit_code":0}))\n')
+        self.assertEqual(self.app.chat('Read-only probe', analysis=True), ('OK', None))
+
+    def test_coaching_automatic_model_failure_durable_restart_and_health_merge(self):
+        self.fresh_history_fixture()
+        context = self.app.coach_context()
+        card = {'title': 'Optional project experiment', 'body': 'A possibility based on the project',
+                'prompt': 'Draft experiment options', 'source_session': 'real', 'message_id': 1}
+        saved = backend.Companion.validate_coaching({'proactive': [card], 'ideas': []}, context)
+        with self.app.connect() as db:
+            db.execute("INSERT OR REPLACE INTO meta VALUES ('suggestions',?)", (json.dumps(saved),))
+            db.execute("UPDATE meta SET value=? WHERE key='coaching_anchor'", (str(time.time() - 7201),))
+            db.execute('INSERT INTO health_issues VALUES (?,?,?,?,?,0)', ('health-existing', 'Observed issue', 'A real observation', 'Review safely', 'settings'))
+        with patch.object(self.app, 'chat', side_effect=RuntimeError('provider failed')) as chat, patch.object(self.app, 'request') as request:
+            outcome = self.wait_request(self.app.refresh(automatic=True)['id'])
+            self.assertEqual(outcome['status'], 'error')
+            self.assertEqual(self.app.refresh(automatic=True)['status'], 'not-due')
+            chat.assert_called_once()
+            request.assert_not_called()
+        state = self.app.state()
+        self.assertEqual(state['proactive'][1:], saved['proactive'])
+        self.assertEqual(state['proactive'][0]['id'], 'health-existing')
+        self.assertEqual(state['notifications'], [])
+        app2 = backend.Companion(self.home, hermes=self.hermes, profile='default')
+        try:
+            with patch.object(app2, 'chat') as chat:
+                self.assertEqual(app2.refresh(automatic=True)['status'], 'not-due')
+                chat.assert_not_called()
+            self.assertEqual(app2.state()['proactive'], state['proactive'])
+            self.assertIsNotNone(app2.coaching_settings()['last_error'])
+        finally:
+            app2.close()
+
+    def test_coaching_interrupted_restart_no_spam_or_replay(self):
+        stamp = time.time()
+        with self.app.connect() as db:
+            db.execute('INSERT INTO requests VALUES (?,?,?,?,?)', ('interrupted-coach', 'Conversation suggestions', 'running', '', backend.now()))
+            db.execute("INSERT INTO meta VALUES ('coaching_attempt',?)", (str(stamp),))
+        app2 = backend.Companion(self.home, hermes=self.hermes, profile='default')
+        try:
+            self.assertEqual(app2.state()['requests'][0]['status'], 'error')
+            self.assertEqual(app2.state()['notifications'], [])
+            self.assertFalse(app2.coaching_settings()['busy'])
+            self.assertIn('interrupted', app2.coaching_settings()['last_error'])
+            self.assertEqual(app2.refresh(automatic=True)['status'], 'not-due')
+        finally:
+            app2.close()
+
+    def test_coaching_bridge_loop_runs_separate_health_and_coach(self):
+        with patch.object(self.app.stop, 'wait', side_effect=[False, True]), \
+                patch.object(self.app, 'poll') as poll, \
+                patch.object(self.app, 'health_check') as health, \
+                patch.object(self.app, 'refresh') as coach:
+            self.app.polling()
+        poll.assert_called_once_with()
+        health.assert_called_once_with(daily=True)
+        coach.assert_called_once_with(automatic=True)
+
     def test_new_routes_authentication(self):
         self.assertEqual(self.http(path='/api/todos', auth=False)[0], 401)
         for route in ('optimize', 'todo-save', 'todo-action', 'health-check', 'health-action'):
@@ -736,7 +984,7 @@ class BackendTests(unittest.TestCase):
             app2.close()
 
     def test_refresh_real_analysis_adapter_and_provenance_validation(self):
-        self.history_fixture()
+        self.fresh_history_fixture()
         valid = {'proactive': [{'title': 'Review', 'body': 'Optional follow up', 'prompt': 'Review the project',
                               'source_session': 'real', 'message_id': 1}], 'ideas': []}
         with patch.object(self.app, 'chat', return_value=(json.dumps(valid), 'analysis-sid')) as chat:
@@ -747,9 +995,10 @@ class BackendTests(unittest.TestCase):
         valid['proactive'][0]['source_session'] = 'fabricated'
         with patch.object(self.app, 'chat', return_value=(json.dumps(valid), 'analysis-sid')):
             result = self.app.refresh()
-            self.wait_request(result['id'])
-            self.assertIn('deterministic-history', self.app.state()['proactive'][0]['source'])
-            self.assertIn('deterministic-history', self.app.state()['ideas'][0]['source'])
+            self.assertEqual(self.wait_request(result['id'])['status'], 'error')
+            self.assertIn('conversation-analysis; session=real', self.app.state()['proactive'][0]['source'])
+            self.assertEqual(self.app.state()['ideas'], [])
+            self.assertIsNotNone(self.app.coaching_settings()['last_error'])
             self.assertFalse(self.app.analysis_busy)
 
     def test_durable_cron_output_and_status_dedupe(self):
@@ -811,9 +1060,8 @@ class BackendTests(unittest.TestCase):
         self.app.last_history_check = float('-inf')
         with patch.object(self.app, 'chat', side_effect=AssertionError('Automatic history must not call LLM')):
             state = self.app.state()
-            self.assertTrue(state['proactive'])
-            self.assertTrue(state['ideas'])
-            self.assertIn('Suggested, not verified', state['proactive'][0]['body'])
+            self.assertEqual(state['proactive'], [])
+            self.assertEqual(state['ideas'], [])
         saved = {'proactive': [{'id': 'llm', 'title': 'LLM', 'body': 'Body', 'prompt': 'Test'}], 'ideas': []}
         saved['proactive'][0]['source'] = 'conversation-analysis; session=real; message=1'
         with self.app.connect() as db:
@@ -936,7 +1184,7 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(len(self.app.state()['notifications']), 3)
 
     def test_reflection_prompt_projects_concrete_assistance_outcomes_and_provenance(self):
-        path = self.history_fixture()
+        path = self.fresh_history_fixture()
         history = backend.recent_history(path)
         self.assertEqual(history[-1]['assistant_reply']['message_id'], 2)
         generated = {'proactive': [], 'ideas': [{'title': 'Build a project review checklist',
@@ -977,7 +1225,7 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(len(self.app.state()['notifications']), 2)
 
     def test_empty_model_reflection_persists_across_new_history_and_restart(self):
-        path = self.history_fixture()
+        path = self.fresh_history_fixture()
         with patch.object(self.app, 'chat', return_value=('{"proactive":[],"ideas":[]}', 'analysis')):
             self.app._analyze()
         with sqlite3.connect(path, factory=backend.ClosingConnection) as db:

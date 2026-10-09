@@ -2,11 +2,11 @@
 
 [Documentation home](index.md)
 
-## Current baseline: 0.4.0
+## Current baseline: 0.4.1
 
 - macOS Apple-silicon desktop client and independently deployed authenticated bridge.
 - Approved white/grey direwolf, closer-set round eyes, smaller highlights, neutral resting mouth, circular bark/howl mouth, tail wag, and unread badge.
-- Three panels: Notifications, Proactive, Ideas for you.
+- Four panels: Notifications, To-do, Proactive, Ideas for you.
 - New final-assistant reply ingestion with no initial backfill and durable cursor/deduplication.
 - Desktop first-launch cutoff; optional watchdog/heartbeat-style/executed-cron visibility.
 - Wolf bark uses the actual uploaded audio decoded to WAV; Little howl and None are selectable.
@@ -30,6 +30,8 @@
 - **0.3.8:** Woof-created schedule results bypass unrelated cron source opt-outs; authenticated, ownership-checked custom notification manager supports verified edits, pause/resume and deletion without erasing previous results. Both client and bridge are updated.
 
 - **0.4.0:** agent-optimized notification drafts with review, actionable-only monitoring, lightweight to-dos with due dates/reminders, and daily agent-health issues with user-authorized repair actions. Existing owned cron output is shown without its injected prompt/metadata wrapper.
+
+- **0.4.1:** a dedicated server-backed To-do panel with inline completion/reopening; contextual Proactive coaching and creative Ideas for you run automatically on a configurable 15-minute-to-daily cadence (two hours by default). Daily agent health remains independent.
 
 Published private downloads are listed in the repository Releases section; not every historical milestone is a release asset.
 

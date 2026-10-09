@@ -9,7 +9,7 @@
 - `client-core.cjs`: URL/token validation, compatible handshake, fetch/route limits.
 - `shell-utils.cjs`: display bounds and panel placement.
 - `backend.py`: stdlib bridge, profile discovery, read-only history, durable outcomes, reflection, scheduler integration.
-- `web/app.js`: three panels and user actions; `settings.js`/`panels.js`: configuration and presentation.
+- `web/app.js`: four panels and user actions; `settings.js`/`panels.js`: configuration and presentation.
 - `web/notification-rules.js`: shared cutoff/source classification, with explicit Woof-created results bypassing unrelated cron source opt-outs.
 - `web/custom-notifications.js`: Settings custom-schedule manager and verified edit/pause/resume/delete flows.
 - `web/mascot.svg`/`mascot.js`: approved artwork, animation, badge, and audio playback.
@@ -41,6 +41,7 @@ node test-fast-open.cjs
 node test-reflection-errors.cjs
 node test-custom-notifications.cjs
 node test-workflows.cjs
+node test-coaching-todos.cjs
 node test-layout.cjs
 node test-glass.cjs
 node test-panels.cjs

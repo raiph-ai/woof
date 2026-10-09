@@ -44,9 +44,9 @@ The API returns the newest 300 saved notifications and 100 requests; older data 
 
 ## Suggestions
 
-Automatic deterministic extraction is explicitly a suggested/unverified fallback and spends no model credits. Explicit history reflection uses the selected profile's provider and bounded history: up to 24 user anchors, associated assistant outcomes, and a shared 12,000-character budget. It is tools-disabled and validates supplied source identities.
+Automatic contextual coaching and manual reflection use the selected profile’s provider with tools disabled. A bounded recent window covers the previous evening; conversation anchors/outcomes, relevant notifications and open to-dos supply validated source references. Proactive prioritizes possible attention/coaching needs; Ideas explores grounded personal/project possibilities. The saved cadence defaults to 120 minutes (15–1440 minutes supported), with durable attempt/check checkpoints and a separate daily health schedule. Coaching uses a per-run low-reasoning override and concise output without changing the configured model/provider or normal requests. It uses a 120-second agent run budget with a 150-second subprocess ceiling; shorter existing optimization/health bounds stay unchanged. Failed model runs retain prior successful suggestions and expose an error rather than passing generic extraction off as coaching.
 
-Proactive focuses on possible open loops; Ideas proposes concrete assistance. Model-backed cards survive unrelated polling and newer history until another explicit refresh replaces them. Clicking a suggestion sends a new request; provenance is context, not an automatic continuation of an old session.
+Proactive focuses on possible attention needs and useful next steps; Ideas proposes broader contextual possibilities. Model-backed cards survive unrelated polling until a successful automatic or manual coaching run replaces them. Clicking a suggestion sends a new request; provenance is context, not an automatic continuation of an old session.
 
 ## Actionable workflows
 

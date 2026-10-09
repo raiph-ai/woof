@@ -47,6 +47,12 @@ Woof does not start Hermes scheduling. Check the scheduler/gateway serving the s
 
 Open Settings → Manage custom notifications to confirm the saved task, active/paused status, last result status and next run. Builds before 0.3.8 treated these results like generic cron output, hidden by default. Update both client and bridge to 0.3.8: Woof-created results are eligible without enabling unrelated cron traffic. The existing first-launch cutoff and desktop dismissal still apply; a new client does not backfill older results. Creation does not run a repeating task immediately, and an active existing Hermes scheduler remains required.
 
+## Proactive coaching and To-do panel
+
+The To-do panel saves Complete/Reopen on the bridge, rather than merely hiding a card. Its pending count excludes completed items. If an item does not update, check the connection and returned error; refreshing should show the server state.
+
+For coaching, check Settings → Proactive cadence and the last/next run/error status. Automatic model calls require the bridge and provider to be available; moving the slider is not an immediate reflection request. A failed run retains the last successful cards. The coach reviews bounded recent context, not the entire profile history, and ideas are possibilities rather than verified obligations. Daily agent-health checks are separate and are not slowed down/sped up by the coaching slider.
+
 ## Optimization, to-do reminders and health checks
 
 Optimization needs working model-provider authorization. Retry after recovering the provider; do not interpret an error as an optimized result. Review the alert criteria to avoid repeated routine reports. A to-do reminder needs an active bridge and connected desktop; None disables audio, and idle desktop polling can delay the sound. Completing/deleting a to-do cancels pending reminders.

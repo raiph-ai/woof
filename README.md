@@ -6,12 +6,12 @@
 
 Woof lives on your Mac while Hermes can run on another machine. It brings new replies and task results to your desktop, and offers contextual follow-ups you can choose to send back to Hermes. It is a companion, not a Hermes fork or an autonomous action engine.
 
-**Current version: 0.4.0 · macOS Apple silicon · Private development repository**
+**Current version: 0.4.1 · macOS Apple silicon · Private development repository**
 
 ## Start here
 
 - [Documentation home](docs/index.md)
-- [Download the current private release](https://github.com/raiph-ai/woof/releases/tag/v0.4.0)
+- [Download the current private release](https://github.com/raiph-ai/woof/releases/tag/v0.4.1)
 - [Installation and pairing](docs/setup.md)
 - [How it works](docs/architecture.md)
 - [User guide](docs/usage.md)
@@ -26,7 +26,7 @@ The repository and release assets are private. **GitHub Pages is not enabled.** 
 ## What it does
 
 - Small draggable white/grey wolf with unread badge, tail-wag and round-mouth notification reaction.
-- Three panels: **Notifications**, **Proactive**, and **Ideas for you**.
+- Four panels: **Notifications**, **To-do**, **Proactive**, and **Ideas for you**. Complete or reopen saved tasks directly from To-do; contextual coaching defaults to every two hours with a 15-minute-to-daily Settings slider.
 - New user-visible final Hermes replies from the connected profile, durable task results, and configurable scheduled-event sources.
 - First-launch inbox cutoff and durable deduplication; no bulk backfill of old assistant messages.
 - **Wolf bark**, **Little howl**, or **None**, with preview. Bark uses the uploaded recording decoded to WAV, not the old synthesized tone.
@@ -38,7 +38,7 @@ The repository and release assets are private. **GitHub Pages is not enabled.** 
 
 ## Two-part setup
 
-**Client Mac:** open `Woof-0.4.0-arm64.dmg` and drag Woof into Applications. The packaged client needs no Python, Node, or Hermes. Quit an older client before replacing it. This build is ad-hoc signed, **not Apple-notarized**.
+**Client Mac:** open `Woof-0.4.1-arm64.dmg` and drag Woof into Applications. The packaged client needs no Python, Node, or Hermes. Quit an older client before replacing it. This build is ad-hoc signed, **not Apple-notarized**.
 
 **Hermes host:** obtain this source and run the bridge beside an existing Hermes installation:
 

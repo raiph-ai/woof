@@ -10,7 +10,7 @@ The unread badge stays on the wolf. A newly arriving eligible notification trigg
 
 At rest, the mouth is small and nearly neutral. The approved round-eye artwork uses closer-set eyes, small highlights, white/grey fur, and no blush, collar, or dog tag.
 
-## Three panels
+## Four panels
 
 ### Notifications
 
@@ -18,13 +18,17 @@ New user-visible final Hermes replies from the connected profile, companion task
 
 There is no old-conversation backfill on bridge activation. Existing saved companion records are additionally filtered by the desktop's persistent first-launch cutoff. Upgrading an already-initialized client keeps that cutoff.
 
+### To-do
+
+A separate panel lists pending to-dos with their details, due date and reminder time. Complete an item directly from its card; completion is saved on the bridge and removes it from the pending count. Show completed to view or reopen completed items. Settings → Manage To-dos retains full edit/delete controls.
+
 ### Proactive
 
-Potential open loops, unresolved decisions, and follow-ups from conversation context. Suggestions are not verified obligations. Automatic fallback extraction is local and free of model calls; explicit reflection is different.
+A practical coach for recent conversations—including the previous evening—plus relevant notifications and pending to-dos. It identifies possible things needing attention, helps prioritize, and proposes useful next steps. It considers assistant outcomes so completed requests are not automatically treated as unfinished. Suggestions are not verified obligations. Sources and context are bounded; the coach does not inspect every historical record or perform suggested actions.
 
 ### Ideas for you
 
-Concrete help Hermes can offer on projects described in prior conversations: drafts, research, comparisons, builds, debugging, and deliverables. Reflect on my history performs bounded tools-disabled model analysis. It does not silently execute the suggestions.
+An idea generator for the person and projects described in recent conversations: marketing directions, bug-testing angles, customer research, product possibilities, useful routines, questions to explore, or concrete deliverables Hermes could help create. This is broader than unfinished tasks. Health-related ideas are supportive possibilities/questions, not diagnoses or medical directives. Model analysis is tools-disabled and never silently executes suggestions.
 
 Both suggestion panels show counts of visible, non-dismissed cards. Expand the request preview before choosing Ask Hermes to help. That click authorizes a new Hermes request with ordinary tool approval rules.
 
@@ -45,6 +49,12 @@ Useful email alerts focus on a specific message, urgency/deadline, a verified me
 Choose To-do in Add item. Enter a title, details, due date, and optionally a reminder date/time. Reminder time uses your desktop timezone and is sent as an explicit timezone-aware timestamp; the due date is a calendar day. Manage To-dos in Settings to edit, complete, reopen, or delete items. Completing/deleting cancels future reminders and preserves notification history.
 
 To-dos are stored on the bridge, not executed by Hermes or turned into model-powered cron jobs. A reminder is emitted once when due, survives bridge restart, and uses the currently selected Wolf bark/Little howl/None setting through the normal notification pipeline. Missed reminders catch up when the bridge resumes. Woof must be running/connected to play sound; idle background delivery is polled, not instantaneous.
+
+## Automatic coaching cadence
+
+Settings includes a Proactive coaching slider from 15 minutes to once a day, defaulting to every two hours. Save the setting explicitly; slider movement does not trigger model calls. Coaching settings are persisted on the connected bridge and shared by clients connecting to that profile. The interface shows the last/next check, busy state and any provider error. Manual reflection runs the same contextual coaching immediately.
+
+Coaching uses bounded recent context (roughly the past 36 hours, covering the previous evening) and source-linked suggestions. Automatic runs use the configured provider and may incur its normal cost; shorter intervals make more calls. The bridge must be running. Durable attempt/check timestamps prevent a restart from causing repeated immediate calls. Failed model runs preserve the last successful cards and show an error rather than quietly replacing them with generic extraction.
 
 ## Daily agent health
 

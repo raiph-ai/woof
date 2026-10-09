@@ -1,4 +1,4 @@
-const API_METHODS={state:'GET',info:'GET',custom:'GET',todos:'GET',optimize:'POST','todo-save':'POST','todo-action':'POST','health-check':'POST','health-action':'POST','custom-edit':'POST','custom-delete':'POST',schedule:'POST',request:'POST',refresh:'POST',notification:'POST',job:'POST'};
+const API_METHODS={state:'GET',info:'GET',custom:'GET',todos:'GET','coaching-settings':['GET','POST'],optimize:'POST','todo-save':'POST','todo-action':'POST','health-check':'POST','health-action':'POST','custom-edit':'POST','custom-delete':'POST',schedule:'POST',request:'POST',refresh:'POST',notification:'POST',job:'POST'};
 function validateConnection(input){
  if(!input||typeof input.serverUrl!=='string')throw Error('Enter the Hermes server URL.');
  const raw=input.serverUrl.trim();let u;try{u=new URL(raw);}catch{throw Error('Use a complete URL such as https://hermes.example.com or http://127.0.0.1:47831.');}
@@ -17,7 +17,7 @@ function candidateConnection(input,saved){
 }
 async function fetchBridge(connection,route,data,options={}){
  if(!Object.hasOwn(API_METHODS,route))throw Error('Unsupported bridge operation.');
- const method=API_METHODS[route];if(method==='GET'&&data!==undefined)throw Error('Read requests cannot include a body.');
+ const supported=API_METHODS[route];const method=Array.isArray(supported)?(data===undefined?'GET':'POST'):supported;if(!['GET','POST'].includes(method)||(Array.isArray(supported)&&!supported.includes(method)))throw Error('Unsupported bridge method.');if(method==='GET'&&data!==undefined)throw Error('Read requests cannot include a body.');
  const body=method==='POST'?JSON.stringify(data??{}):undefined;
  if(body&&Buffer.byteLength(body)>65536)throw Error('Request is too large.');
  const endpoint=new URL('api/'+route,connection.serverUrl);
