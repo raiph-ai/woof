@@ -42,6 +42,10 @@ It does not write into Hermes session history. Scheduling changes happen through
 
 The API returns the newest 300 saved notifications and 100 requests; older data remains in the companion DB. A separate desktop cutoff/source filter determines visibility and alerts. Woof-created schedules are recorded in a durable managed-job ledger, with legacy ownership migrated only from matching creation confirmations. Their results carry custom:true and bypass generic cron/health source opt-outs, but not the desktop date cutoff. Deleted schedules retain tombstone ownership for previous results. New authenticated custom-list/edit/delete routes are ownership-checked; edits/removals use supported Hermes CLI commands and verify readback. Unrelated profile jobs are never adopted by name.
 
+## Bridge performance safeguards
+
+Companion-only timestamp indexes serve latest notifications and requests. Notification provenance is fetched with one join instead of one query per card. Assistant batches remain 200 rows with atomic cursor checkpoints, but are streamed rather than fully materialized; excluded roles/sessions are rejected before parsing their bodies. Managed snapshots are parsed once. No additional cache, dependency, task-list cap or wire-payload reduction is introduced. Hermes history remains read-only.
+
 ## Small client performance safeguards
 
 Full-state cached results expire at the existing 70-second freshness deadline and are released instead of being retained indefinitely during an outage. Fresh reopens still use the existing cache; concurrent GETs coalesce; mutations/reconnections/forgetting clear cached data. Renderer release and ownership isolation are preserved. The package trim removes unused generated npm installation metadata while keeping audio, ICU, ffmpeg and licenses. No new dependency or framework is introduced.

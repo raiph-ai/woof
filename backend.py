@@ -353,7 +353,9 @@ class Companion:
                 (id TEXT PRIMARY KEY,title TEXT,details TEXT,due_date TEXT,reminder_at TEXT,
                  timezone TEXT,status TEXT,reminded_at TEXT,deleted_at TEXT);
               CREATE TABLE IF NOT EXISTS health_issues
-                (id TEXT PRIMARY KEY,title TEXT,body TEXT,prompt TEXT,kind TEXT,resolved INTEGER DEFAULT 0);''')
+                (id TEXT PRIMARY KEY,title TEXT,body TEXT,prompt TEXT,kind TEXT,resolved INTEGER DEFAULT 0);
+              CREATE INDEX IF NOT EXISTS notifications_created_at ON notifications(created_at DESC);
+              CREATE INDEX IF NOT EXISTS requests_created_at ON requests(created_at DESC);''')
             self._backfill_owned(db)
             rows = db.execute("SELECT id,title FROM requests WHERE status IN ('queued','running')").fetchall()
             for row in rows:
@@ -403,15 +405,20 @@ class Companion:
             rows = history.execute('SELECT m.*,s.source AS session_source' + hidden +
                                    ' FROM messages m JOIN sessions s ON s.id=m.session_id '
                                    'WHERE m.id>? ORDER BY m.id LIMIT ?',
-                                   (int(cursor['value']), batch_size)).fetchall()
+                                   (int(cursor['value']), batch_size))
+            consumed, last_id = 0, None
             for raw in rows:
+                consumed += 1
+                last_id = raw['id']
                 row = dict(raw)
                 source = row['session_source'] or ''
                 source_lower = source.lower()
-                body = visible_assistant(row)
-                if (not body or source_lower in ('cron', 'subagent', 'tool') or
+                if (row['role'] != 'assistant' or source_lower in ('cron', 'subagent', 'tool') or
                         'analysis' in source_lower or source_lower == 'nudge-smoke' or
                         row.get('session_hidden')):
+                    continue
+                body = visible_assistant(row)
+                if not body:
                     continue
                 stable_id = str(row.get('message_uid') or row['id'])
                 key = 'assistant:' + row['session_id'] + ':' + stable_id
@@ -434,9 +441,9 @@ class Companion:
                         except (ValueError, TypeError, OverflowError, OSError):
                             pass
                     db.execute('INSERT INTO seen VALUES (?)', (key,))
-            if rows:
-                db.execute("UPDATE meta SET value=? WHERE key='assistant_cursor'", (str(rows[-1]['id']),))
-            return len(rows)
+            if last_id is not None:
+                db.execute("UPDATE meta SET value=? WHERE key='assistant_cursor'", (str(last_id),))
+            return consumed
 
     def seed_history(self):
         # Legacy hook remains local and inert: no generic fallback replaces reflection.
@@ -699,6 +706,7 @@ class Companion:
         for row in db.execute('SELECT * FROM managed_jobs WHERE deleted_at IS NULL ORDER BY created_at,id'):
             job = live.get(row['id'])
             snapshot = json.loads(row['snapshot'])
+            previous = snapshot
             if job is not None:
                 snapshot = {'title': job.get('name') or row['title'],
                             'prompt': job.get('prompt', row['prompt']),
@@ -708,7 +716,7 @@ class Companion:
                             'enabled': bool(job.get('enabled', True)),
                             'last_status': job.get('last_status'),
                             'last_run_at': job.get('last_run_at'), 'next_run_at': job.get('next_run_at')}
-                if snapshot != json.loads(row['snapshot']):
+                if snapshot != previous:
                     db.execute('UPDATE managed_jobs SET snapshot=? WHERE id=?', (json.dumps(snapshot), row['id']))
             entry = {'id': row['id'], 'title': row['title'], 'prompt': row['prompt'],
                      'schedule': row['schedule'], 'mode': row['mode'], 'enabled': False,
@@ -1085,15 +1093,16 @@ class Companion:
             health_cards = [{'id': r['id'], 'title': r['title'], 'body': r['body'], 'prompt': r['prompt'],
                              'source': 'agent-health', 'action': {'label': 'Review solution' if r['kind'] == 'request' else 'Open settings',
                              'kind': r['kind']}} for r in db.execute('SELECT * FROM health_issues WHERE resolved=0 ORDER BY id')]
-            notifications = [dict(r) for r in db.execute('SELECT * FROM notifications ORDER BY created_at DESC LIMIT 300')]
+            notifications = [dict(r) for r in db.execute('SELECT n.*,p.notification_id AS provenance_id,p.session_id,p.message_id,p.source,p.message_timestamp '
+                'FROM notifications n LEFT JOIN message_provenance p ON p.notification_id=n.id '
+                'ORDER BY n.created_at DESC LIMIT 300')]
             for n in notifications:
                 if n['job_id'] in owned or n['job_id'] in todo_ids:
                     n['custom'] = True
                 n['read'] = bool(n['read'])
-                provenance = db.execute('SELECT session_id,message_id,source,message_timestamp '
-                                        'FROM message_provenance WHERE notification_id=?', (n['id'],)).fetchone()
-                if provenance:
-                    n.update(dict(provenance))
+                if n.pop('provenance_id') is None:
+                    for key in ('session_id', 'message_id', 'source', 'message_timestamp'):
+                        del n[key]
                 if n['job_id'] is None:
                     del n['job_id']
             requests = [dict(r) for r in db.execute('SELECT id,title,status,body FROM requests ORDER BY created_at DESC LIMIT 100')]

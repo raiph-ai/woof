@@ -2,7 +2,7 @@
 
 [Documentation home](index.md)
 
-## Current baseline: 0.4.3
+## Current baseline: 0.4.4
 
 - macOS Apple-silicon desktop client and independently deployed authenticated bridge.
 - Approved white/grey direwolf, closer-set round eyes, smaller highlights, neutral resting mouth, circular bark/howl mouth, tail wag, and unread badge.
@@ -34,6 +34,9 @@
 - **0.4.1:** a dedicated server-backed To-do panel with inline completion/reopening; contextual Proactive coaching and creative Ideas for you run automatically on a configurable 15-minute-to-daily cadence (two hours by default). Daily agent health remains independent.
 
 - **0.4.2:** Woof Settings title; compact To-do cards with server-backed Completed checkboxes; concise Agent health header; coach status moved into Settings; expired full-state cache released at its existing freshness deadline; unused generated npm metadata removed from the app.
+
+- **0.4.3:** exactly one Completed checkbox per task, with completed history under a native disclosure.
+- **0.4.4:** readable shared inline-code styling in both themes; bridge timestamp indexes, joined provenance and streamed assistant batches reduce repeated work while preserving output, checkpoints and task data.
 
 Published private downloads are listed in the repository Releases section; not every historical milestone is a release asset.
 

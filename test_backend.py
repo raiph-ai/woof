@@ -84,6 +84,38 @@ class BackendTests(unittest.TestCase):
             db.execute('UPDATE messages SET timestamp=timestamp+?', (time.time() - 10,))
         return path
 
+    def test_state_indexed_latest_rows_provenance_and_fresh_readback(self):
+        with self.app.connect() as db:
+            db.executemany('INSERT INTO notifications VALUES (?,?,?,?,0,NULL)',
+                           [(f'fixture-{i}', 'Fixture', 'Body', f'{i:06}') for i in range(400)])
+            db.executemany('INSERT INTO requests VALUES (?,?,?,?,?)',
+                           [(f'fixture-{i}', 'Fixture', 'completed', 'Body', f'{i:06}') for i in range(120)])
+            db.execute('INSERT INTO message_provenance VALUES (?,?,?,?,?)',
+                       ('fixture-399', 'session', 'message', 'cli', 123))
+            db.execute('INSERT INTO message_provenance VALUES (?,?,?,?,?)',
+                       ('fixture-398', None, None, None, None))
+            for table in ('notifications', 'requests'):
+                plan = db.execute(f'EXPLAIN QUERY PLAN SELECT * FROM {table} ORDER BY created_at DESC LIMIT 100').fetchall()
+                self.assertTrue(any(table + '_created_at' in r[3] for r in plan))
+        state = json.loads(self.http()[2])
+        self.assertEqual(len(state['notifications']), 300)
+        self.assertEqual(len(state['requests']), 100)
+        self.assertEqual(state['notifications'][0]['id'], 'fixture-399')
+        self.assertEqual(state['requests'][0]['id'], 'fixture-119')
+        self.assertEqual(state['notifications'][0]['message_id'], 'message')
+        self.assertIn('session_id', state['notifications'][1])
+        self.assertIsNone(state['notifications'][1]['session_id'])
+        self.assertNotIn('session_id', state['notifications'][2])
+        self.assertNotIn('provenance_id', state['notifications'][0])
+        with self.app.connect() as db:
+            db.execute("UPDATE notifications SET body='Changed',read=1 WHERE id='fixture-399'")
+            db.execute("UPDATE message_provenance SET source='slack' WHERE notification_id='fixture-399'")
+        newest = json.loads(self.http()[2])['notifications'][0]
+        self.assertEqual((newest['body'], newest['read'], newest['source']), ('Changed', True, 'slack'))
+        with self.app.connect() as db:
+            self.assertEqual(db.execute('SELECT count(*) FROM notifications').fetchone()[0], 400)
+            self.assertEqual(db.execute('SELECT count(*) FROM requests').fetchone()[0], 120)
+
     def test_coaching_settings_contract_auth_validation_and_no_call(self):
         self.assertEqual(self.http(path='/api/coaching-settings', auth=False)[0], 401)
         self.assertEqual(self.http('POST', '/api/coaching-settings', {}, auth=False)[0], 401)
