@@ -8,7 +8,7 @@ const legacyUserData=app.getPath('userData');app.setName('Woof');app.setPath('us
 // Isolate Chromium preferences as well as connection files when using an explicit data directory.
 if(process.env.HERMES_NUDGE_DATA_DIR){fs.mkdirSync(process.env.HERMES_NUDGE_DATA_DIR,{recursive:true,mode:0o700});app.setPath('userData',path.resolve(process.env.HERMES_NUDGE_DATA_DIR));}
 let mascot,panel,panelReady,releaseTimer,dragSaveTimer,badgeBusy=false,quitting=false,connection=null,configError='';
-const MASCOT_WIDTH=64,MASCOT_HEIGHT=72;let notificationSettings,seenNotifications=new Set(),latestState=null,stateOwner=null,latestStateAt=0,stateFlight=null,cachedOnOpen=false;
+const MASCOT_WIDTH=64,MASCOT_HEIGHT=72;let notificationSettings,seenNotifications=new Set(),latestState=null,stateOwner=null,latestStateAt=0,stateFlight=null,stateExpiry,cachedOnOpen=false;
 const launchTimestamp=new Date().toISOString();
 const userDir=()=>process.env.HERMES_NUDGE_DATA_DIR||app.getPath('userData');
 const configPath=()=>path.join(userDir(),'connection.json');
@@ -51,15 +51,17 @@ wireInvoke('token-paste',async()=>{
 wireInvoke('connection-save',async input=>{
  const candidate=candidateConnection(input,connection);
  const status=await testConnection(candidate);
- if(input.remember!==true){connection=candidate;configError='';if(fs.existsSync(configPath()))fs.unlinkSync(configPath());return {...publicConfig(),...status,sessionOnly:true};}
+ if(input.remember!==true){connection=candidate;clearState();configError='';if(fs.existsSync(configPath()))fs.unlinkSync(configPath());return {...publicConfig(),...status,sessionOnly:true};}
  if(!safeStorage.isEncryptionAvailable())throw Error('OS credential encryption is unavailable. No token was saved.');
  ensureDir();const stored={serverUrl:candidate.serverUrl,allowInsecureHttp:candidate.allowInsecureHttp,encryptedToken:safeStorage.encryptString(candidate.token).toString('base64')};
- const temp=configPath()+'.new';fs.writeFileSync(temp,JSON.stringify(stored),{mode:0o600});fs.renameSync(temp,configPath());connection=candidate;configError='';return {...publicConfig(),...status};
+ const temp=configPath()+'.new';fs.writeFileSync(temp,JSON.stringify(stored),{mode:0o600});fs.renameSync(temp,configPath());connection=candidate;clearState();configError='';return {...publicConfig(),...status};
 });
 wireInvoke('connection-test',async input=>testConnection(candidateConnection(input,connection)));
-wireInvoke('connection-forget',()=>{if(fs.existsSync(configPath()))fs.unlinkSync(configPath());connection=null;latestState=null;stateOwner=null;configError='';return publicConfig();});
-async function fetchState(){const owner=connection;if(stateFlight?.owner===owner)return stateFlight.promise;const promise=fetchBridge(owner,'state',undefined,{timeout:10000}).then(result=>{if(connection!==owner)throw Error('Connection changed.');latestState=result;stateOwner=owner;latestStateAt=Date.now();observeNotifications(filterNotifications(result.notifications,notificationSettings));return result;}).finally(()=>{if(stateFlight?.promise===promise)stateFlight=null;});stateFlight={owner,promise};return promise;}
-wireInvoke('bridge-api',async(route,data)=>{if(!connection)throw Error('Connect to your Hermes server in Settings.');if(route==='state'){let result;if(cachedOnOpen&&stateOwner===connection&&Date.now()-latestStateAt<70000)result=latestState;cachedOnOpen=false;result=result||await fetchState();return {...result,notifications:filterNotifications(result.notifications,notificationSettings)};}const owner=connection;const result=await fetchBridge(owner,route,data);if(connection!==owner)throw Error('Connection changed. This result was discarded; a submitted mutation may already have been applied on the previous server. Check there before retrying.');if(API_METHODS[route]==='POST'||Array.isArray(API_METHODS[route])&&data!==undefined){latestState=null;stateOwner=null;}return result;});
+wireInvoke('connection-forget',()=>{if(fs.existsSync(configPath()))fs.unlinkSync(configPath());connection=null;clearState();configError='';return publicConfig();});
+// ponytail: release state when the existing reopen TTL ends, without copying or truncating payloads.
+function clearState(){clearTimeout(stateExpiry);latestState=null;stateOwner=null;}
+async function fetchState(){const owner=connection;if(stateFlight?.owner===owner)return stateFlight.promise;const promise=fetchBridge(owner,'state',undefined,{timeout:10000}).then(result=>{if(connection!==owner)throw Error('Connection changed.');clearState();latestState=result;stateOwner=owner;latestStateAt=Date.now();stateExpiry=setTimeout(clearState,70000);stateExpiry.unref();observeNotifications(filterNotifications(result.notifications,notificationSettings));return result;}).finally(()=>{if(stateFlight?.promise===promise)stateFlight=null;});stateFlight={owner,promise};return promise;}
+wireInvoke('bridge-api',async(route,data)=>{if(!connection)throw Error('Connect to your Hermes server in Settings.');if(route==='state'){let result;if(cachedOnOpen&&stateOwner===connection&&Date.now()-latestStateAt<70000)result=latestState;cachedOnOpen=false;result=result||await fetchState();return {...result,notifications:filterNotifications(result.notifications,notificationSettings)};}const owner=connection;const result=await fetchBridge(owner,route,data);if(connection!==owner)throw Error('Connection changed. This result was discarded; a submitted mutation may already have been applied on the previous server. Check there before retrying.');if(API_METHODS[route]==='POST'||Array.isArray(API_METHODS[route])&&data!==undefined){clearState();}return result;});
 if(!app.requestSingleInstanceLock())app.quit();else{
  app.on('second-instance',()=>{mascot?.show();if(panel)showPanel();});
  app.whenReady().then(async()=>{

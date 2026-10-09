@@ -42,6 +42,8 @@ node test-reflection-errors.cjs
 node test-custom-notifications.cjs
 node test-workflows.cjs
 node test-coaching-todos.cjs
+node test-main-performance.cjs
+node --expose-gc test-main-performance.cjs --benchmark
 node test-layout.cjs
 node test-glass.cjs
 node test-panels.cjs

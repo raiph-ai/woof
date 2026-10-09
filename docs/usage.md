@@ -20,7 +20,7 @@ There is no old-conversation backfill on bridge activation. Existing saved compa
 
 ### To-do
 
-A separate panel lists pending to-dos with their details, due date and reminder time. Complete an item directly from its card; completion is saved on the bridge and removes it from the pending count. Show completed to view or reopen completed items. Settings → Manage To-dos retains full edit/delete controls.
+A separate panel lists pending to-dos with their details, due date and reminder time. Tick the card’s Completed checkbox; completion is saved on the bridge and removes it from the pending count. The Completed filter reveals finished items; untick an item’s Completed checkbox to reopen it. Cards use compact title/details/due/reminder spacing. Settings → Manage To-dos retains full edit/delete controls.
 
 ### Proactive
 
@@ -52,7 +52,7 @@ To-dos are stored on the bridge, not executed by Hermes or turned into model-pow
 
 ## Automatic coaching cadence
 
-Settings includes a Proactive coaching slider from 15 minutes to once a day, defaulting to every two hours. Save the setting explicitly; slider movement does not trigger model calls. Coaching settings are persisted on the connected bridge and shared by clients connecting to that profile. The interface shows the last/next check, busy state and any provider error. Manual reflection runs the same contextual coaching immediately.
+Settings includes a Proactive coaching slider from 15 minutes to once a day, defaulting to every two hours. Save the setting explicitly; slider movement does not trigger model calls. Coaching settings are persisted on the connected bridge and shared by clients connecting to that profile. Woof Settings shows coaching frequency and last/next review, busy state and any provider error. Proactive keeps its header compact: Agent health, actionable problem count, last checked and Check agent, with no additional explanatory copy. Coaching cards remain below it. Manual reflection runs the same contextual coaching immediately.
 
 Coaching uses bounded recent context (roughly the past 36 hours, covering the previous evening) and source-linked suggestions. Automatic runs use the configured provider and may incur its normal cost; shorter intervals make more calls. The bridge must be running. Durable attempt/check timestamps prevent a restart from causing repeated immediate calls. Failed model runs preserve the last successful cards and show an error rather than quietly replacing them with generic extraction.
 

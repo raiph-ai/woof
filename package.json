@@ -1,6 +1,6 @@
 {
   "name": "hermes-nudge",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "license": "MIT",
   "description": "A local-first desktop companion for Hermes Agent",
   "main": "main.cjs",
