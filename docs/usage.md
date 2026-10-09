@@ -20,7 +20,7 @@ There is no old-conversation backfill on bridge activation. Existing saved compa
 
 ### To-do
 
-A separate panel lists pending to-dos with their details, due date and reminder time. Tick the card’s Completed checkbox; completion is saved on the bridge and removes it from the pending count. The Completed filter reveals finished items; untick an item’s Completed checkbox to reopen it. Cards use compact title/details/due/reminder spacing. Settings → Manage To-dos retains full edit/delete controls.
+A separate panel lists pending to-dos with their details, due date and reminder time. Tick the card’s Completed checkbox; completion is saved on the bridge and removes it from the pending count. Expand Completed items to reveal finished items; untick an item’s Completed checkbox to reopen it. Cards use compact title/details/due/reminder spacing. Settings → Manage To-dos retains full edit/delete controls.
 
 ### Proactive
 

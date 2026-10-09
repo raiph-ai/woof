@@ -2,7 +2,7 @@
 
 [Documentation home](index.md)
 
-## Current baseline: 0.4.2
+## Current baseline: 0.4.3
 
 - macOS Apple-silicon desktop client and independently deployed authenticated bridge.
 - Approved white/grey direwolf, closer-set round eyes, smaller highlights, neutral resting mouth, circular bark/howl mouth, tail wag, and unread badge.
