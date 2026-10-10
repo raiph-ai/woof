@@ -11,7 +11,7 @@ Woof lives on your Mac while Hermes can run on another machine. It brings new re
 ## Start here
 
 - [Documentation home](docs/index.md)
-- [Download the current private release](https://github.com/raiph-ai/woof/releases/tag/v0.4.4)
+- [Download the current release](https://github.com/raiph-ai/woof/releases/tag/v0.4.4)
 - [Installation and pairing](docs/setup.md)
 - [How it works](docs/architecture.md)
 - [User guide](docs/usage.md)
@@ -21,7 +21,7 @@ Woof lives on your Mac while Hermes can run on another machine. It brings new re
 - [Roadmap and release history](docs/roadmap.md)
 - [Detailed bridge/API reference](README-backend.md)
 
-The repository and release assets are private. **GitHub Pages is not enabled.** Documentation is rendered inside the repository; public hosting and a domain are separate future decisions.
+Woof is a public, open-source project. **GitHub Pages is not enabled.** Source, documentation, and release downloads are available in this repository. The current desktop installer supports Apple-silicon Macs; Windows, Linux, and Intel Mac installers are not shipped or verified.
 
 ## What it does
 
@@ -71,7 +71,7 @@ Single connected profile; no multi-tenant roles. Native client verified on macOS
 
 ## License and public-release gate
 
-Code and original mascot artwork are MIT-licensed. The bark is user-provided audio; confirm redistribution rights before a public release. The howl is an original synthesized effect. This private repository does not claim public launch readiness.
+Code and original mascot artwork are MIT-licensed. The contributor has confirmed permission to redistribute the supplied bark recording. The howl is an original synthesized effect. This is an early-stage project: the Mac build is ad-hoc signed, not Apple-notarized. Feature ideas, bug reports, and contributions are welcome.
 
 Contributions: [CONTRIBUTING.md](CONTRIBUTING.md). Private vulnerability reports: [SECURITY.md](SECURITY.md).
 

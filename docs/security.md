@@ -2,9 +2,9 @@
 
 [Documentation home](index.md) · [Security reporting](../SECURITY.md)
 
-## Keep this project private
+## Public code, private credentials
 
-The repository is intentionally private. GitHub Pages is disabled. A private repository does not automatically make a Pages deployment private; do not enable it or change visibility without a separate approval and access-control review.
+The repository and release downloads are public with the maintainer’s authorization. GitHub Pages remains disabled. Public source does not make the bridge public: protect its pairing token and use HTTPS or a secure tunnel for remote access.
 
 No pairing token, personal profile database, conversation transcript, live deployment address, credential file, or private configuration belongs in commits or release assets. Sample configuration uses placeholders.
 
@@ -40,4 +40,4 @@ Back up the companion DB and relevant client preferences securely before destruc
 
 The Mac build is ad-hoc signed, not notarized. Signing verification detects installer corruption but is not a substitute for Developer ID identity/notarization. Do not disable system-wide protections to install it.
 
-Code/original mascot use the MIT license. The bark is user-provided; verify its redistribution rights before public release. The howl is an original synthesized effect. Do not assume an uploaded clip is automatically MIT-licensed.
+Code/original mascot use the MIT license. The contributor has confirmed permission to redistribute the supplied bark recording. The howl is an original synthesized effect. Do not assume an uploaded clip is automatically MIT-licensed.

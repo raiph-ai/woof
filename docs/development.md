@@ -80,10 +80,10 @@ The package command trims the generated English-only client. Build/test/source f
 5. Create/mount the DMG, verify strict signature and expected bundled files/version.
 6. Run source privacy scan; exclude history, pairing/config files, binaries/vendor/cache folders from Git.
 7. Produce checksums and a ZIP containing exactly the DMG; verify enclosed SHA256 matches the original.
-8. Upload assets to the private release and read back repository visibility, release tag/assets, and main commit.
+8. Upload assets to the release and read back repository visibility, release tag/assets, and main commit.
 
 Signing is currently ad-hoc, not notarization. Do not remove graphics/audio libraries speculatively to shrink the app. Prefer measured cuts in redundant build material and unused locale resources over unsafe runtime stripping.
 
-## Before public launch
+## Release hygiene
 
-Review audio licensing, private-data scans, release reproducibility, signed/notarized distribution, screenshots, onboarding, and security guidance. GitHub Pages is not a private documentation default. Public publication requires an explicit visibility decision.
+Review audio licensing, private-data scans, release reproducibility, signed/notarized distribution, screenshots, onboarding, and security guidance. GitHub Pages is not a private documentation default. The maintainer has authorized public repository/release visibility and confirmed bark redistribution permission. Keep private deployment data out of future changes and assets.

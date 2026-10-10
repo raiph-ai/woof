@@ -38,12 +38,12 @@
 - **0.4.3:** exactly one Completed checkbox per task, with completed history under a native disclosure.
 - **0.4.4:** readable shared inline-code styling in both themes; bridge timestamp indexes, joined provenance and streamed assistant batches reduce repeated work while preserving output, checkpoints and task data.
 
-Published private downloads are listed in the repository Releases section; not every historical milestone is a release asset.
+Published downloads are listed in the repository Releases section; not every historical milestone is a release asset.
 
 ## Next priorities — proposed, not implemented
 
 1. Developer ID signing and Apple notarization.
-2. Verify bark redistribution rights or replace it with a clearly licensed/original recording before public launch.
+2. Keep audio redistribution permissions documented when replacing or adding sounds; the contributor confirmed permission for the current bark.
 3. Reproducible native build automation, improved packaged native CI, and interactive Keychain validation.
 4. Stronger bridge service-management/onboarding instructions without changing Hermes core automatically.
 5. Evaluate lower-latency background delivery against CPU/network/privacy cost; current idle detection is polling, not push.
