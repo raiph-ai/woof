@@ -5,7 +5,7 @@ from pathlib import Path
 root=Path(__file__).resolve().parent.parent
 version=json.loads((root/'package.json').read_text())['version']
 files=['README.md','README-backend.md','LICENSE','SECURITY.md','CONTRIBUTING.md','.gitignore',
-'package.json','package-lock.json','backend.py','main.cjs','preload.cjs','client-core.cjs','shell-utils.cjs',
+'package.json','package-lock.json','bridge_service.py','test_bridge_service.py','test-startup.cjs','startup.cjs','backend.py','main.cjs','preload.cjs','client-core.cjs','shell-utils.cjs',
 'test_backend.py','test-shell.cjs','test-client.cjs','test-ui.cjs','verify-desktop.cjs','create-icon.cjs',
 'web/index.html','web/app.js','web/styles.css','web/settings.js','web/settings.css',
 'web/workflows.js','web/body-links.js','test-main-performance.cjs','test-coaching-todos.cjs','test-workflows.cjs','web/custom-notifications.js','test-custom-notifications.cjs','web/token-controls.css','web/panels.js','test-panels.cjs','test-glass.cjs','test-layout.cjs','test-notification-rules.cjs','test-notification-prefs.cjs','web/notification-rules.js','test-mascot-alerts.cjs','scripts/create_sounds.py','scripts/build_mascot.py','web/sounds/woof.wav','web/sounds/wolf-bark.mp3','web/sounds/wolf-bark.wav','test-fast-open.cjs','test-reflection-errors.cjs','scripts/trim_client.py','web/sounds/howl.wav','verify-token-controls.cjs','verify-memory.cjs','web/mascot.html','web/mascot.js','web/mascot.svg','assets/mascot.png','assets/Nudge.icns',

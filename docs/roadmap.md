@@ -2,7 +2,7 @@
 
 [Documentation home](index.md)
 
-## Current baseline: 0.4.4
+## Current baseline: 0.4.5
 
 - macOS Apple-silicon desktop client and independently deployed authenticated bridge.
 - Approved white/grey direwolf, closer-set round eyes, smaller highlights, neutral resting mouth, circular bark/howl mouth, tail wag, and unread badge.
@@ -38,6 +38,8 @@
 - **0.4.3:** exactly one Completed checkbox per task, with completed history under a native disclosure.
 - **0.4.4:** readable shared inline-code styling in both themes; bridge timestamp indexes, joined provenance and streamed assistant batches reduce repeated work while preserving output, checkpoints and task data.
 
+- **0.4.5:** explicit bridge auto-start installation on macOS, per-profile crash recovery and authenticated readiness checks; desktop launch-at-login control; regression coverage for service lifecycle and login settings.
+
 Published downloads are listed in the repository Releases section; not every historical milestone is a release asset.
 
 ## Next priorities — proposed, not implemented
@@ -45,7 +47,7 @@ Published downloads are listed in the repository Releases section; not every his
 1. Developer ID signing and Apple notarization.
 2. Keep audio redistribution permissions documented when replacing or adding sounds; the contributor confirmed permission for the current bark.
 3. Reproducible native build automation, improved packaged native CI, and interactive Keychain validation.
-4. Stronger bridge service-management/onboarding instructions without changing Hermes core automatically.
+4. Broader server-platform service management beyond the macOS bridge installer.
 5. Evaluate lower-latency background delivery against CPU/network/privacy cost; current idle detection is polling, not push.
 6. Review token scoping/rotation ergonomics for wider deployments. Current design is single-profile, not multi-tenant.
 7. Decide public repository/domain/landing page only after approval. No domain ownership or availability is asserted.

@@ -8,6 +8,8 @@ contextBridge.exposeInMainWorld('nudge',{
  api:(route,data)=>ipcRenderer.invoke('bridge-api',route,data),
  openLink:url=>ipcRenderer.invoke('open-link',url),
  getConnection:()=>ipcRenderer.invoke('connection-get'),
+ getStartup:()=>ipcRenderer.invoke('startup-get'),
+ setStartup:enabled=>ipcRenderer.invoke('startup-set',enabled),
  previewSound:sound=>ipcRenderer.invoke('sound-preview',sound),
  onNotification:fn=>ipcRenderer.on('notification-arrived',(_e,event)=>fn(event)),
  onSoundPreview:fn=>ipcRenderer.on('sound-preview',(_e,event)=>fn(event)),

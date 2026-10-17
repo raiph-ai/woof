@@ -6,6 +6,20 @@ function populateCoaching(data){validCoachingSettings(data);setting('coaching-in
 async function loadCoachingSettings(){if(coachingSettingsBusy)return;coachingSettingsBusy=true;setting('save-coaching').disabled=true;setting('coaching-interval').disabled=true;coachingSettingsMessage('Loading coach frequency…');try{populateCoaching(await api('coaching-settings'));coachingSettingsMessage('Coach frequency loaded from your Hermes server.');}catch(e){coachingSettingsMessage(e.message,true);}finally{coachingSettingsBusy=false;setting('save-coaching').disabled=false;setting('coaching-interval').disabled=false;}}
 let savedConnection={configured:false};window.nudgeConnected=!window.nudge;
 const setting=id=>document.getElementById(id);
+let startupBusy=false;
+function startupMessage(text,error=false){const el=setting('startup-status');el.textContent=text;el.className=error?'error':'hint';}
+function populateStartup(status){if(status.error)throw Error(status.error);if(typeof status.supported!=='boolean'||typeof status.enabled!=='boolean')throw Error('Invalid macOS login item status.');setting('launch-at-login').checked=status.enabled;setting('launch-at-login').disabled=!status.supported;startupMessage(status.supported?(status.enabled?'Woof is set to launch at login.':'Woof will not launch at login.'):(status.reason||'Launch at login is unavailable.'));}
+async function loadStartupSettings(){
+ if(startupBusy)return;startupBusy=true;setting('launch-at-login').disabled=true;
+ try{if(!window.nudge?.getStartup){setting('launch-at-login').checked=false;startupMessage('Launch at login is available only in the installed macOS desktop app.');return;}populateStartup(await window.nudge.getStartup());}
+ catch(e){setting('launch-at-login').checked=false;setting('launch-at-login').disabled=true;startupMessage(e.message,true);}finally{startupBusy=false;}
+}
+setting('launch-at-login').addEventListener('change',async()=>{
+ if(startupBusy)return;startupBusy=true;const checkbox=setting('launch-at-login'),enabled=checkbox.checked;checkbox.disabled=true;startupMessage('Updating macOS login item…');
+ try{populateStartup(await window.nudge.setStartup(enabled));}
+ catch(e){try{populateStartup(await window.nudge.getStartup());}catch{checkbox.checked=false;checkbox.disabled=true;}startupMessage(e.message,true);}
+ finally{startupBusy=false;}
+});
 function connectionMessage(message,error=false){const el=setting(error?'connection-error':'connection-status');el.textContent=message;el.hidden=false;setting(error?'connection-status':'connection-error').hidden=true;}
 function resetTokenVisibility(){setting('server-token').type='password';setting('toggle-token').textContent='Show';setting('toggle-token').setAttribute('aria-label','Show pairing token');setting('toggle-token').setAttribute('aria-pressed','false');setting('token-feedback').textContent='';}
 setting('toggle-token').addEventListener('click',()=>{const visible=setting('server-token').type==='password';setting('server-token').type=visible?'text':'password';setting('toggle-token').textContent=visible?'Hide':'Show';setting('toggle-token').setAttribute('aria-label',visible?'Hide pairing token':'Show pairing token');setting('toggle-token').setAttribute('aria-pressed',String(visible));});
@@ -18,6 +32,7 @@ for(const id of ['show-watchdog','show-heartbeat','show-cron','notification-soun
 setting('preview-sound').addEventListener('click',async()=>{const result=await window.nudge.previewSound(setting('notification-sound').value);if(result.error)connectionMessage(result.error,true);});
 function settingsInput(){return {serverUrl:setting('server-url').value,token:setting('server-token').value,allowInsecureHttp:setting('allow-http').checked,remember:setting('remember-token').checked};}
 async function showConnectionSettings(){
+ await loadStartupSettings();
  if(!window.nudge?.getConnection){if(!setting('settings').open)setting('settings').showModal();await loadCoachingSettings();return;}
  resetTokenVisibility();savedConnection=await window.nudge.getConnection();populateNotifications(savedConnection.notifications);setting('server-url').value=savedConnection.serverUrl||'';setting('server-token').value='';setting('server-token').placeholder=savedConnection.hasSavedToken?'Leave blank to keep the saved token':'Token from your Hermes server';setting('server-token').required=!savedConnection.hasSavedToken;setting('allow-http').checked=!!savedConnection.allowInsecureHttp;setting('remember-token').checked=false;setting('forget-server').hidden=!savedConnection.configured;setting('connection-status').hidden=true;setting('connection-error').hidden=true;if(savedConnection.error)connectionMessage(savedConnection.error,true);if(!setting('settings').open)setting('settings').showModal();await loadCoachingSettings();
 }

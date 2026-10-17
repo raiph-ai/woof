@@ -16,5 +16,5 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - run: npm test
-      - run: python3 -B -m unittest test_backend -v
+      - run: python3 -B -m unittest test_backend test_bridge_service -v
       - run: node test-ui.cjs

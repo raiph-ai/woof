@@ -12,6 +12,17 @@
 - A 401 means authentication failed; re-enter the token securely. Do not paste it into an issue.
 - A 403 can indicate mismatched Host/Origin or a prohibited cross-site request. Check exact public URL/proxy configuration.
 
+## Bridge unavailable after restart
+
+A foreground `backend.py` process stops when its terminal/session ends and does not restart at login. On a macOS Hermes host, install the supported service from a normal host terminal:
+
+```sh
+python3 bridge_service.py install --profile your-profile
+python3 bridge_service.py status --profile your-profile
+```
+
+Stop a manually running bridge before installation; the installer refuses to claim a listener it does not manage. The service keeps the existing token and companion data. See [service management](bridge-service.md) for logs, dry-run, removal, and limitations. The desktop **Launch Woof at login** checkbox starts only the app, not a remote bridge or SSH tunnel. A Mac user LaunchAgent starts at login, not before login.
+
 ## Saved connection asks for credentials again
 
 Session-only mode deliberately forgets the token on quit. Remembered tokens require Keychain access. macOS may prompt after an ad-hoc rebuild changes the app's signing identity. Reauthorize on the desktop or reconnect manually; there is no plaintext fallback.

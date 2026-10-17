@@ -25,7 +25,7 @@ Use Node 24, npm, Python 3.9+, and Playwright Chromium for source tests. Native 
 npm ci
 npx playwright install chromium
 npm test
-python3 -B -m unittest test_backend -v
+python3 -B -m unittest test_backend test_bridge_service -v
 node test-ui.cjs
 npm start
 ```

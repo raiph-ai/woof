@@ -12,7 +12,7 @@ They can be the same machine, but do not assume they are. Install the desktop ap
 ## 1. Install the client
 
 1. Download the current installer from the public release.
-2. Verify it against the release's `SHA256SUMS.txt`, for example `shasum -a 256 Woof-0.4.4-arm64.dmg`.
+2. Verify it against the release's `SHA256SUMS.txt`, for example `shasum -a 256 Woof-0.4.5-arm64.dmg`.
 3. Quit an older Woof/Hermes Nudge client before replacing it.
 4. Open the DMG and drag Woof into Applications.
 5. Launch Woof. Because this build is ad-hoc signed rather than notarized, macOS may require **System Settings → Privacy & Security → Open Anyway** after the first launch attempt. Do not disable Gatekeeper globally.
@@ -31,7 +31,9 @@ Omit `--profile` for the default profile. Initialize named profiles in Hermes fi
 
 By default the bridge listens at `http://127.0.0.1:47831`. It prints the pairing token's **file path**, not the token. The token is stored at `<resolved-profile-home>/nudge/token`. Retrieve it securely on the host; never put it in source, logs, screenshots, issues, or documentation.
 
-The bridge is a separate foreground process unless you arrange your own service supervision. Its startup does not start Hermes or the Hermes scheduler.
+For reliable startup on a macOS Hermes host, use `python3 bridge_service.py install --profile your-profile` instead. This installs a per-user LaunchAgent that starts at login and restarts the bridge after a crash. It checks the authenticated bridge handshake before reporting success. Keep the source folder in a stable location. See [service installation, status, and removal](bridge-service.md). Run installation from a normal host terminal; supervised agent sessions may block service registration.
+
+The desktop **Launch Woof at login** setting starts the Mac app only; it does not install a bridge on a remote host. Enable **Remember this connection** if you want automatic reconnection after login; otherwise re-enter the session-only pairing token. Neither startup option starts Hermes or the Hermes scheduler.
 
 ## 3. Choose transport
 

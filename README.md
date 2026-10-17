@@ -6,12 +6,12 @@
 
 Woof lives on your Mac while Hermes can run on another machine. It brings new replies and task results to your desktop, and offers contextual follow-ups you can choose to send back to Hermes. It is a companion, not a Hermes fork or an autonomous action engine.
 
-**Current version: 0.4.4 · macOS Apple silicon · Private development repository**
+**Current version: 0.4.5 · macOS Apple silicon · Open source**
 
 ## Start here
 
 - [Documentation home](docs/index.md)
-- [Download the current release](https://github.com/raiph-ai/woof/releases/tag/v0.4.4)
+- [Download the current release](https://github.com/raiph-ai/woof/releases/tag/v0.4.5)
 - [Installation and pairing](docs/setup.md)
 - [How it works](docs/architecture.md)
 - [User guide](docs/usage.md)
@@ -38,13 +38,15 @@ Woof is a public, open-source project. **GitHub Pages is not enabled.** Source, 
 
 ## Two-part setup
 
-**Client Mac:** open `Woof-0.4.4-arm64.dmg` and drag Woof into Applications. The packaged client needs no Python, Node, or Hermes. Quit an older client before replacing it. This build is ad-hoc signed, **not Apple-notarized**.
+**Client Mac:** open `Woof-0.4.5-arm64.dmg` and drag Woof into Applications. The packaged client needs no Python, Node, or Hermes. Quit an older client before replacing it. This build is ad-hoc signed, **not Apple-notarized**.
 
 **Hermes host:** obtain this source and run the bridge beside an existing Hermes installation:
 
 ```sh
-python3 -B backend.py --profile your-profile
+python3 bridge_service.py install --profile your-profile
 ```
+
+On macOS, this installs a per-user bridge service that starts at login and restarts after a crash. Enable **Launch Woof at login** separately in the desktop Settings. Keep the source folder in a stable location. For a foreground-only bridge or other server platforms, use `python3 -B backend.py --profile your-profile`; see [bridge service management](docs/bridge-service.md).
 
 Python 3.9+ is required; no extra Python packages. Omit `--profile` for the default profile. The default bridge listener is `http://127.0.0.1:47831`. Pair using its URL and securely retrieved token. The bridge prints the token's path, not its value.
 

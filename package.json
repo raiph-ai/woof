@@ -1,14 +1,14 @@
 {
   "name": "hermes-nudge",
-  "version": "0.4.4",
+  "version": "0.4.5",
   "license": "MIT",
   "description": "A local-first desktop companion for Hermes Agent",
   "main": "main.cjs",
   "private": true,
   "scripts": {
     "start": "electron .",
-    "test": "node --test test-shell.cjs test-client.cjs test-notification-rules.cjs",
-    "package": "electron-packager . \"Woof\" --platform=darwin --arch=arm64 --no-asar --out=dist --icon=assets/Nudge.icns --app-bundle-id=com.redcirclestudio.hermesnudge --overwrite --ignore=\"^/(dist|docs|test.*|verify-.*|create-icon.*|__pycache__|evidence|assets|scripts|backend.py|README.*|SECURITY.md|CONTRIBUTING.md|package-lock.json|.github|.gitignore)|^/web/sounds/(woof.wav|wolf-bark.mp3)$\" && python3 scripts/trim_client.py"
+    "test": "node --test test-shell.cjs test-client.cjs test-notification-rules.cjs test-startup.cjs",
+    "package": "electron-packager . \"Woof\" --platform=darwin --arch=arm64 --no-asar --out=dist --icon=assets/Nudge.icns --app-bundle-id=com.redcirclestudio.hermesnudge --overwrite --ignore=\"^/(dist|docs|test.*|verify-.*|create-icon.*|__pycache__|evidence|assets|scripts|backend.py|bridge_service.py|README.*|SECURITY.md|CONTRIBUTING.md|package-lock.json|.github|.gitignore)|^/web/sounds/(woof.wav|wolf-bark.mp3)$\" && python3 scripts/trim_client.py"
   },
   "devDependencies": {
     "@electron/packager": "^20.3.0",

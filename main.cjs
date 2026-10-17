@@ -3,6 +3,7 @@ const fs=require('node:fs'),path=require('node:path');
 const {clampPoint,panelPosition}=require('./shell-utils.cjs');
 const {validateConnection,candidateConnection,fetchBridge,testConnection,API_METHODS,validateExternalLink}=require('./client-core.cjs');
 const {filterNotifications,notificationKind}=require('./web/notification-rules.js');
+const startup=require('./startup.cjs').createStartupSettings({app});
 app.setName('Hermes Nudge');
 const legacyUserData=app.getPath('userData');app.setName('Woof');app.setPath('userData',legacyUserData);
 // Isolate Chromium preferences as well as connection files when using an explicit data directory.
@@ -36,6 +37,8 @@ function publicConfig(){return {configured:!!connection,serverUrl:connection?.se
 function trusted(e){return e.sender===panel?.webContents&&e.senderFrame===panel.webContents.mainFrame;}
 function wireInvoke(channel,handler){ipcMain.handle(channel,async(e,...args)=>{if(!trusted(e))return {error:'Untrusted caller'};try{return await handler(...args);}catch(err){return {error:String(err.message||'Operation failed')}};});}
 wireInvoke('connection-get',()=>publicConfig());
+wireInvoke('startup-get',()=>startup.get());
+wireInvoke('startup-set',enabled=>startup.set(enabled));
 wireInvoke('open-link',async value=>{const url=validateExternalLink(value);if(connection&&new URL(url).hostname===new URL(connection.serverUrl).hostname)throw Error('Bridge-local links cannot be opened.');await shell.openExternal(url);return {ok:true};});
 wireInvoke('notifications-set',input=>{for(const key of ['watchdog','heartbeat','cron'])if(typeof input?.[key]!=='boolean')throw Error('Invalid notification preference.');if(!['woof','howl','none'].includes(input.sound))throw Error('Invalid notification sound.');const sourceEnabledAt={...notificationSettings.sourceEnabledAt};for(const key of ['watchdog','heartbeat','cron'])if(input[key]&&!notificationSettings[key])sourceEnabledAt[key]=Date.now();notificationSettings={...notificationSettings,sourceEnabledAt,watchdog:input.watchdog,heartbeat:input.heartbeat,cron:input.cron,sound:input.sound};if(input.sound==='none')mascot?.webContents.send('sound-preview',{sound:'none'});saveNotificationSettings();refreshBackgroundBadge();return notificationSettings;});
 wireInvoke('sound-preview',sound=>{if(!['woof','howl','none'].includes(sound))throw Error('Invalid notification sound.');mascot?.webContents.send('sound-preview',{sound});return {ok:true};});
